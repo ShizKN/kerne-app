@@ -1,0 +1,2442 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+    <title>KERNE - Salle d'étude</title>
+    <link rel="icon" type="image/png" href="Logo.png" />
+    <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/simple-peer@9.11.1/simplepeer.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Oswald:wght@600;700&display=swap');
+
+        :root {
+            --paper: #f4f1e8;
+            --paper-dark: #e8e3d6;
+            --ink: #1a1a1a;
+            --highlight: #ffeb3b;
+            --red-pen: #d32f2f;
+            --green: #4caf50;
+            --blue: #2196f3;
+            --tape: rgba(150, 150, 150, .3);
+            --grid-line: rgba(26, 26, 26, 0.08);
+        }
+
+        /* --- ICONS STATUT SUR VIDEO (POSITIONS CORRIGÉES) --- */
+        .status-badge {
+            position: absolute;
+            width: clamp(24px, 5vw, 32px);
+            height: clamp(24px, 5vw, 32px);
+            background: var(--red-pen);
+            border: 2px solid white;
+            border-radius: 50%;
+            display: none;
+            /* Caché par défaut */
+            align-items: center;
+            justify-content: center;
+            z-index: 20;
+            box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+            pointer-events: none;
+            animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .status-badge svg {
+            width: 60%;
+            height: 60%;
+            stroke: white;
+            fill: none;
+            stroke-width: 2.5;
+        }
+
+        /* MICRO : En bas à DROITE (Opposé de l'ancienne version) */
+        .status-mic {
+            bottom: 10px;
+            right: 10px;
+        }
+
+        /* SON : En haut à GAUCHE (Opposé de l'ancienne version) */
+        .status-sound {
+            top: 10px;
+            left: 10px;
+        }
+
+        /* Classes toggles par le JS */
+        .video-element.mic-off .status-mic {
+            display: flex;
+        }
+
+        .video-element.sound-off .status-sound {
+            display: flex;
+        }
+
+        @keyframes popIn {
+            from {
+                transform: scale(0);
+            }
+
+            to {
+                transform: scale(1);
+            }
+        }
+
+        /* --- STYLES TABLEAU BLANC --- */
+        .board-btn-wrapper {
+            position: fixed;
+            bottom: clamp(25px, 5vw, 35px);
+            right: clamp(25px, 5vw, 35px);
+            z-index: 100;
+            transition: opacity 0.3s, transform 0.3s;
+        }
+
+        body.sidebar-open .board-btn-wrapper,
+        body.sidebar-open .sound-control-wrapper {
+            opacity: 0;
+            pointer-events: none;
+            transform: translateY(20px);
+        }
+
+        .board-toggle-btn {
+            width: clamp(40px, 8vw, 50px);
+            height: clamp(40px, 8vw, 50px);
+            border-radius: 50%;
+            border: 3px solid var(--ink);
+            background: white;
+            cursor: pointer;
+            transition: all .3s cubic-bezier(.25, .8, .25, 1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 3px 3px 0 rgba(0, 0, 0, .1);
+            position: relative;
+        }
+
+        .board-toggle-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 4px 4px 0 rgba(0, 0, 0, .15);
+        }
+
+        .board-toggle-btn.active {
+            background: var(--highlight);
+        }
+
+        .board-toggle-btn.has-notif::after {
+            content: '';
+            position: absolute;
+            top: -2px;
+            right: -2px;
+            width: 12px;
+            height: 12px;
+            background: var(--red-pen);
+            border-radius: 50%;
+            border: 2px solid white;
+            animation: pulse 1.5s infinite;
+        }
+
+        .board-modal {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) scale(0.9);
+            width: min(90vw, 1000px);
+            height: min(80vh, 700px);
+            background: var(--paper);
+            border: 3px solid var(--ink);
+            box-shadow: 10px 10px 0 rgba(0, 0, 0, 0.2);
+            z-index: 3000;
+            display: none;
+            flex-direction: column;
+            opacity: 0;
+            transition: opacity 0.3s, transform 0.3s;
+        }
+
+        .board-modal.show {
+            transform: translate(-50%, -50%) scale(1) rotate(-0.5deg);
+            opacity: 1;
+            display: flex;
+        }
+
+        @media (max-width: 768px) {
+            .board-modal {
+                width: 100% !important;
+                height: 100% !important;
+                top: 0;
+                left: 0;
+                transform: none !important;
+                border: none;
+                border-radius: 0;
+            }
+
+            .board-modal.show {
+                transform: none !important;
+            }
+
+            .board-header::before {
+                display: none;
+            }
+        }
+
+        .board-header {
+            padding: 10px 15px;
+            border-bottom: 2px dashed var(--ink);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--paper-dark);
+            position: relative;
+            flex-shrink: 0;
+        }
+
+        .board-header::before {
+            content: '';
+            position: absolute;
+            top: -12px;
+            left: 50%;
+            transform: translateX(-50%) rotate(2deg);
+            width: 100px;
+            height: 20px;
+            background: var(--tape);
+        }
+
+        .board-title {
+            font-family: 'Oswald', sans-serif;
+            font-weight: 700;
+            text-transform: uppercase;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 70%;
+        }
+
+        .board-content {
+            flex: 1;
+            overflow: hidden;
+            position: relative;
+            display: flex;
+        }
+
+        #boardListView {
+            width: 100%;
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .create-board-btn {
+            padding: 15px;
+            border: 3px dashed var(--ink);
+            background: rgba(255, 255, 255, 0.5);
+            font-family: 'Courier Prime', monospace;
+            cursor: pointer;
+            text-transform: uppercase;
+            font-weight: bold;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .create-board-btn:hover {
+            background: white;
+            border-style: solid;
+            transform: translateY(-2px);
+        }
+
+        .board-item {
+            background: white;
+            border: 2px solid var(--ink);
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.05);
+            transition: transform 0.2s;
+        }
+
+        .board-item:hover {
+            transform: translateX(5px);
+            border-color: var(--highlight);
+        }
+
+        .board-item-meta {
+            font-size: 11px;
+            opacity: 0.6;
+        }
+
+        .delete-board-btn {
+            background: none;
+            border: none;
+            color: var(--red-pen);
+            cursor: pointer;
+            padding: 5px;
+            font-weight: bold;
+            font-size: 18px;
+        }
+
+        #boardDrawView {
+            width: 100%;
+            height: 100%;
+            display: none;
+            flex-direction: column;
+        }
+
+        #boardDrawView.active {
+            display: flex;
+        }
+
+        .canvas-toolbar {
+            padding: 8px;
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+            background: rgba(255, 255, 255, 0.95);
+            border-bottom: 2px solid var(--ink);
+            align-items: center;
+            flex-wrap: wrap;
+            z-index: 10;
+        }
+
+        .tool-btn {
+            width: 36px;
+            height: 36px;
+            border: 2px solid var(--ink);
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            transition: all 0.2s;
+        }
+
+        .tool-btn:hover {
+            transform: translateY(-2px);
+        }
+
+        .tool-btn.active {
+            background: var(--highlight);
+            box-shadow: 2px 2px 0 var(--ink);
+            transform: translate(-1px, -1px);
+        }
+
+        .color-dot {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            border: 2px solid transparent;
+            cursor: pointer;
+            box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.1);
+        }
+
+        .color-dot.active {
+            border-color: var(--ink);
+            transform: scale(1.1);
+        }
+
+        .separator {
+            width: 2px;
+            height: 20px;
+            background: var(--ink);
+            margin: 0 2px;
+            opacity: 0.2;
+        }
+
+        .canvas-container {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            background-color: white;
+            background-image: radial-gradient(var(--grid-line) 1px, transparent 1px);
+            background-size: 20px 20px;
+            touch-action: none;
+        }
+
+        #drawingCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            cursor: crosshair;
+            touch-action: none;
+        }
+
+        #textInputWrapper {
+            position: absolute;
+            display: none;
+            z-index: 20;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 2px;
+            border: 2px dashed var(--highlight);
+            box-shadow: 3px 3px 5px rgba(0, 0, 0, 0.2);
+            border-radius: 4px;
+        }
+
+        #textInputOverlay {
+            background: transparent;
+            border: none;
+            font-family: 'Courier Prime', monospace;
+            font-size: 20px;
+            color: var(--ink);
+            outline: none;
+            min-width: 150px;
+        }
+
+        #textInputConfirm {
+            display: inline-block;
+            background: var(--green);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 2px 6px;
+            margin-left: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .close-board-modal {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: var(--ink);
+            transition: color 0.2s;
+        }
+
+        .close-board-modal:hover {
+            color: var(--red-pen);
+        }
+
+        /* ------------------------------------------- */
+        @keyframes fadeInScale {
+            from {
+                opacity: 0;
+                transform: scale(0.8);
+            }
+
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        @keyframes slideInFromBottom {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes pulse {
+            0% {
+                transform: scale(1);
+            }
+
+            50% {
+                transform: scale(1.2);
+            }
+
+            100% {
+                transform: scale(1);
+            }
+        }
+
+        @keyframes pulseGlow {
+
+            0%,
+            100% {
+                box-shadow: 3px 3px 0 rgba(0, 0, 0, .1);
+            }
+
+            50% {
+                box-shadow: 3px 3px 0 rgba(0, 0, 0, .1), 0 0 15px rgba(255, 235, 59, 0.5);
+            }
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            height: 100%;
+            height: 100dvh;
+            overflow: hidden;
+        }
+
+        body {
+            font-family: 'Courier Prime', monospace;
+            background: linear-gradient(135deg, #e8e3d6 0%, #d4cfc0 100%);
+            color: var(--ink);
+            position: relative;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0, 0, 0, .02)2px, rgba(0, 0, 0, .02)4px);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .app-container {
+            display: grid;
+            grid-template-columns: 1fr 320px;
+            grid-template-rows: 60px 1fr 80px;
+            height: 100%;
+            height: 100dvh;
+            gap: clamp(8px, 1.5vw, 15px);
+            padding: clamp(8px, 1.5vw, 15px);
+            padding-bottom: clamp(15px, 3vw, 25px);
+            position: relative;
+            z-index: 1;
+            overflow: hidden;
+            transition: grid-template-columns .4s cubic-bezier(.25, .8, .25, 1);
+        }
+
+        .app-container.sidebar-closed {
+            grid-template-columns: 1fr 0;
+        }
+
+        .header {
+            grid-column: 1/-1;
+            background: var(--highlight);
+            border: 3px solid var(--ink);
+            padding: 0 clamp(15px, 3vw, 25px);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 5px 5px 0 rgba(0, 0, 0, .1);
+            position: relative;
+            z-index: 10;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            top: -10px;
+            left: 20px;
+            width: clamp(60px, 12vw, 80px);
+            height: 20px;
+            background: var(--tape);
+            border: 1px solid rgba(0, 0, 0, .1);
+            transform: rotate(-5deg);
+        }
+
+        .logo-header {
+            font-family: 'Oswald', sans-serif;
+            font-size: clamp(18px, 3.5vw, 28px);
+            font-weight: 700;
+            letter-spacing: -1px;
+            text-transform: uppercase;
+        }
+
+        .room-info {
+            font-size: clamp(10px, 2vw, 13px);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            background: var(--ink);
+            color: var(--highlight);
+            padding: clamp(6px, 1.2vw, 8px) clamp(12px, 2.5vw, 15px);
+            border-radius: 20px;
+            font-weight: 700;
+        }
+
+        .video-grid {
+            background: var(--paper);
+            border: 3px solid var(--ink);
+            box-shadow: 6px 6px 0 rgba(0, 0, 0, .1);
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-content: center;
+            gap: 10px;
+            /* FIX: Gap fixe et propre */
+            padding: 10px;
+            /* FIX: Padding fixe pour assurer le centrage */
+            transition: all .3s;
+            z-index: 5;
+        }
+
+        .video-element {
+            position: relative;
+            background: var(--paper);
+            border: 3px solid var(--ink);
+            overflow: hidden;
+            border-radius: clamp(8px, 1.5vw, 12px);
+            transition: width .3s, height .3s;
+            animation: fadeInScale 0.4s cubic-bezier(.25, .8, .25, 1);
+            will-change: width, height;
+        }
+
+        .video-element.joining {
+            animation: bounceIn 0.6s cubic-bezier(.25, .8, .25, 1);
+        }
+
+        .video-element video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .video-element:hover .video-overlay {
+            transform: translateY(0);
+        }
+
+        .video-avatar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background-color: var(--paper);
+            background-image: linear-gradient(var(--grid-line)1px, transparent 1px), linear-gradient(90deg, var(--grid-line)1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+
+        .avatar-circle {
+            min-width: 80px;
+            min-height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 4px solid var(--ink);
+            background: var(--highlight);
+            font-size: clamp(30px, 6vw, 45px);
+            flex-shrink: 0;
+            font-family: 'Oswald', sans-serif;
+            font-weight: 700;
+            box-shadow: 4px 4px 0 var(--ink);
+            transform: rotate(-2deg);
+            margin-bottom: 10px;
+            transition: background 0.3s ease;
+        }
+
+        .avatar-circle.color-1 {
+            background: #FFB74D;
+        }
+
+        .avatar-circle.color-2 {
+            background: #81C784;
+        }
+
+        .avatar-circle.color-3 {
+            background: #64B5F6;
+        }
+
+        .avatar-circle.color-4 {
+            background: #BA68C8;
+        }
+
+        .avatar-circle.color-5 {
+            background: #FF8A65;
+        }
+
+        .avatar-circle.color-6 {
+            background: #4DB6AC;
+        }
+
+        .avatar-name {
+            font-family: 'Oswald', sans-serif;
+            font-size: clamp(14px, 2.8vw, 18px);
+            font-weight: 700;
+            color: var(--ink);
+            text-align: center;
+            margin-top: 5px;
+            padding: 0 10px;
+        }
+
+        .video-overlay {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(transparent, rgba(0, 0, 0, .7));
+            padding: clamp(8px, 1.5vw, 12px) clamp(10px, 2vw, 15px);
+            transform: translateY(0);
+            transition: transform .3s ease;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .video-name {
+            color: white;
+            font-size: clamp(11px, 2.2vw, 14px);
+            font-weight: 700;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, .5);
+        }
+
+        .fullscreen-btn {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            width: 32px;
+            height: 32px;
+            background: rgba(0, 0, 0, 0.7);
+            border: 2px solid white;
+            border-radius: 6px;
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+            z-index: 10;
+            opacity: 1;
+            transform: scale(1);
+        }
+
+        .video-element:hover .fullscreen-btn {
+            opacity: 1;
+            transform: scale(1);
+        }
+
+        .fullscreen-btn:hover {
+            background: var(--highlight);
+            color: var(--ink);
+            border-color: var(--ink);
+            transform: scale(1.1);
+        }
+
+        .video-grid.fullscreen-mode .video-element {
+            display: none;
+        }
+
+        .video-grid.fullscreen-mode .video-element.fullscreen-active {
+            display: block;
+            width: 100% !important;
+            height: 100% !important;
+        }
+
+        .controls {
+            grid-column: 1/-1;
+            background: var(--paper);
+            border: 3px solid var(--ink);
+            box-shadow: 6px 6px 0 rgba(0, 0, 0, .1);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: clamp(15px, 3vw, 25px);
+            padding: clamp(10px, 2vw, 15px);
+            z-index: 50;
+        }
+
+        .control-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .control-btn {
+            width: clamp(40px, 8vw, 50px);
+            height: clamp(40px, 8vw, 50px);
+            border-radius: 50%;
+            border: 3px solid var(--ink);
+            background: white;
+            cursor: pointer;
+            transition: all .3s cubic-bezier(.25, .8, .25, 1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 3px 3px 0 rgba(0, 0, 0, .1);
+            position: relative;
+        }
+
+        .control-btn.toggling {
+            animation: pulseGlow 0.5s ease-out;
+        }
+
+        .device-selector-btn {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            border: 2px solid var(--ink);
+            background: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all .2s;
+            box-shadow: 2px 2px 0 rgba(0, 0, 0, .1);
+        }
+
+        .device-selector-btn:hover {
+            transform: scale(1.1);
+            background: var(--highlight);
+        }
+
+        .device-selector-btn svg {
+            width: 12px;
+            height: 12px;
+            stroke: var(--ink);
+            stroke-width: 2;
+            fill: none;
+        }
+
+        /* --- MENUS DÉROULANTS (FIXÉS POUR TOUS ECRANS) --- */
+        .device-menu,
+        .sound-device-menu {
+            display: none;
+            position: absolute;
+            bottom: calc(100% + 15px);
+            left: 50%;
+            transform: translateX(-50%);
+            background: white;
+            border: 3px solid var(--ink);
+            border-radius: 8px;
+            box-shadow: 5px 5px 0 rgba(0, 0, 0, .2);
+            min-width: 200px;
+            max-width: 280px;
+            z-index: 100000;
+            /* TOUJOURS AU DESSUS */
+            padding: 5px 0;
+            max-height: 50vh;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .device-menu::after,
+        .sound-device-menu::after {
+            content: '';
+            position: absolute;
+            bottom: -8px;
+            left: 50%;
+            transform: translateX(-50%);
+            border-left: 8px solid transparent;
+            border-right: 8px solid transparent;
+            border-top: 8px solid var(--ink);
+        }
+
+        /* SUR MOBILE : MODE POPUP CENTRÉ */
+        @media(max-width: 768px) {
+
+            .device-menu,
+            .sound-device-menu {
+                position: fixed !important;
+                top: 50% !important;
+                left: 50% !important;
+                bottom: auto !important;
+                transform: translate(-50%, -50%) !important;
+                max-width: 90vw !important;
+                width: 90vw !important;
+                box-shadow: 0 0 0 1000px rgba(0, 0, 0, 0.5) !important;
+                /* Backdrop sombre */
+            }
+
+            .device-menu::after,
+            .sound-device-menu::after {
+                display: none;
+            }
+        }
+
+        /* SUR DESKTOP (Min-Width 769px) : ALIGNEMENT SON GAUCHE */
+        @media(min-width: 769px) {
+            .sound-device-menu {
+                left: 0 !important;
+                transform: none !important;
+            }
+
+            .sound-device-menu::after {
+                left: 62px !important;
+                transform: none !important;
+            }
+        }
+
+        .device-menu.show,
+        .sound-device-menu.show {
+            display: block;
+        }
+
+        .device-menu-item {
+            padding: 10px 15px;
+            cursor: pointer;
+            border-bottom: 1px solid var(--grid-line);
+            font-size: 13px;
+            transition: background .2s;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .device-menu-item:last-child {
+            border-bottom: none;
+        }
+
+        .device-menu-item:hover {
+            background: var(--highlight);
+        }
+
+        .device-menu-item.selected {
+            background: rgba(76, 175, 80, 0.1);
+            font-weight: 700;
+            border-left: 4px solid var(--green);
+        }
+
+        .control-btn svg {
+            width: clamp(18px, 3.5vw, 24px);
+            height: clamp(18px, 3.5vw, 24px);
+            stroke: var(--ink);
+            stroke-width: 2;
+            fill: none;
+        }
+
+        .control-btn.active {
+            background: var(--green);
+        }
+
+        .control-btn.active svg {
+            stroke: white;
+        }
+
+        .control-btn.inactive,
+        #leaveBtn {
+            background: var(--red-pen);
+        }
+
+        .control-btn.inactive svg,
+        #leaveBtn svg {
+            stroke: white;
+        }
+
+        .control-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 4px 4px 0 rgba(0, 0, 0, .15);
+        }
+
+        #sidebarToggle.has-notif::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 14px;
+            height: 14px;
+            background: var(--red-pen);
+            border-radius: 50%;
+            border: 2px solid white;
+            animation: pulse 1.5s infinite;
+            z-index: 10;
+        }
+
+        .sidebar {
+            background: var(--paper);
+            border: 3px solid var(--ink);
+            box-shadow: 6px 6px 0 rgba(0, 0, 0, .1);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            transition: transform .3s ease;
+            will-change: transform;
+        }
+
+        .sidebar-tabs {
+            display: flex;
+            border-bottom: 3px solid var(--ink);
+            background: rgba(255, 255, 255, 0.5);
+        }
+
+        .sidebar-tab {
+            flex: 1;
+            padding: clamp(10px, 2vw, 15px);
+            border: none;
+            background: transparent;
+            font-family: 'Oswald', sans-serif;
+            font-size: clamp(11px, 2.2vw, 14px);
+            font-weight: 700;
+            cursor: pointer;
+            transition: background .2s;
+            text-transform: uppercase;
+            letter-spacing: .5px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+            color: var(--ink);
+            opacity: 0.7;
+        }
+
+        .sidebar-tab:not(:last-child) {
+            border-right: 3px solid var(--ink);
+        }
+
+        .sidebar-tab.active {
+            background: var(--highlight);
+            opacity: 1;
+        }
+
+        .sidebar-tab:hover {
+            background: rgba(255, 235, 59, 0.3);
+        }
+
+        .sidebar-content {
+            flex: 1;
+            overflow-y: auto;
+            position: relative;
+        }
+
+        .tab-panel {
+            display: none;
+            flex-direction: column;
+            height: 100%;
+        }
+
+        .tab-panel.active {
+            display: flex;
+        }
+
+        #chatMessages {
+            flex: 1;
+            overflow-y: auto;
+            padding: clamp(10px, 2vw, 15px);
+            display: flex;
+            flex-direction: column;
+            gap: clamp(8px, 1.5vw, 12px);
+        }
+
+        .chat-message {
+            background: white;
+            border: 2px solid var(--ink);
+            padding: clamp(8px, 1.5vw, 10px);
+            border-radius: 8px;
+            box-shadow: 2px 2px 0 rgba(0, 0, 0, .1);
+            max-width: 85%;
+            word-wrap: break-word;
+        }
+
+        .chat-message.me {
+            background: var(--highlight);
+            align-self: flex-end;
+            margin-left: auto;
+        }
+
+        .chat-message-author {
+            font-weight: 700;
+            font-size: clamp(10px, 2vw, 12px);
+            margin-bottom: 4px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .chat-message-time {
+            font-size: clamp(9px, 1.8vw, 10px);
+            opacity: .6;
+            font-weight: 400;
+        }
+
+        #chatForm {
+            padding: clamp(10px, 2vw, 12px);
+            border-top: 3px solid var(--ink);
+            display: flex;
+            gap: clamp(6px, 1.2vw, 8px);
+            background: rgba(255, 255, 255, 0.8);
+        }
+
+        #chatInput {
+            flex: 1;
+            border: 2px solid var(--ink);
+            padding: clamp(8px, 1.5vw, 10px);
+            font-family: 'Courier Prime', monospace;
+            font-size: clamp(12px, 2.4vw, 14px);
+            border-radius: 20px;
+            background: rgba(255, 255, 255, 0.9);
+        }
+
+        #chatInput:focus {
+            outline: none;
+            border-color: var(--highlight);
+            box-shadow: 0 0 0 2px var(--highlight);
+        }
+
+        .send-btn {
+            width: clamp(35px, 7vw, 40px);
+            height: clamp(35px, 7vw, 40px);
+            border-radius: 50%;
+            border: 2px solid var(--ink);
+            background: var(--green);
+            color: white;
+            font-size: clamp(16px, 3.2vw, 18px);
+            cursor: pointer;
+            transition: all .2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .send-btn:hover {
+            background: #45a049;
+            transform: scale(1.05);
+        }
+
+        #participantsList {
+            padding: clamp(10px, 2vw, 15px);
+            display: flex;
+            flex-direction: column;
+            gap: clamp(8px, 1.5vw, 10px);
+        }
+
+        .participant-item {
+            background: white;
+            border: 2px solid var(--ink);
+            padding: clamp(10px, 2vw, 12px);
+            border-radius: 8px;
+            box-shadow: 2px 2px 0 rgba(0, 0, 0, .1);
+            position: relative;
+            padding-left: clamp(35px, 7vw, 45px);
+            transition: background .2s;
+        }
+
+        .participant-item::before {
+            content: '';
+            position: absolute;
+            left: clamp(10px, 2vw, 12px);
+            top: 50%;
+            transform: translateY(-50%);
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            border: 2px solid var(--ink);
+            background: var(--highlight);
+        }
+
+        .participant-item.color-1::before {
+            background: #FFB74D;
+        }
+
+        .participant-item.color-2::before {
+            background: #81C784;
+        }
+
+        .participant-item.color-3::before {
+            background: #64B5F6;
+        }
+
+        .participant-item.color-4::before {
+            background: #BA68C8;
+        }
+
+        .participant-item.color-5::before {
+            background: #FF8A65;
+        }
+
+        .participant-item.color-6::before {
+            background: #4DB6AC;
+        }
+
+        .participant-name {
+            font-weight: 700;
+            font-size: clamp(12px, 2.4vw, 14px);
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: var(--ink);
+            color: white;
+            padding: 15px 25px;
+            border-radius: 8px;
+            border: 3px solid var(--highlight);
+            box-shadow: 5px 5px 0 rgba(0, 0, 0, .2);
+            font-weight: 700;
+            transform: translateY(150%);
+            transition: transform .3s, opacity .3s, visibility 0s linear 0.3s;
+            z-index: 3000;
+            max-width: 300px;
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+        }
+
+        .toast.show {
+            transform: translateY(0);
+            opacity: 1;
+            visibility: visible;
+            pointer-events: auto;
+            transition-delay: 0s;
+            animation: slideInFromBottom 0.4s cubic-bezier(.25, .8, .25, 1);
+        }
+
+        .toast.error {
+            border-color: var(--red-pen);
+            background: var(--red-pen);
+        }
+
+        .toast.warning {
+            border-color: #ff9800;
+            background: #ff9800;
+        }
+
+        .sound-control-wrapper {
+            position: fixed;
+            bottom: clamp(25px, 5vw, 35px);
+            left: clamp(25px, 5vw, 35px);
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            transition: opacity 0.3s, transform 0.3s;
+        }
+
+        .sound-btn {
+            width: clamp(40px, 8vw, 50px);
+            height: clamp(40px, 8vw, 50px);
+            border-radius: 50%;
+            border: 3px solid var(--ink);
+            background: white;
+            cursor: pointer;
+            transition: all .3s cubic-bezier(.25, .8, .25, 1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 3px 3px 0 rgba(0, 0, 0, .1);
+            position: relative;
+        }
+
+        .sound-btn.toggling {
+            animation: pulseGlow 0.5s ease-out;
+        }
+
+        .sound-btn svg {
+            width: clamp(18px, 3.5vw, 24px);
+            height: clamp(18px, 3.5vw, 24px);
+            stroke: var(--ink);
+            stroke-width: 2;
+            fill: none;
+        }
+
+        .sound-btn.active {
+            background: var(--green);
+        }
+
+        .sound-btn.active svg {
+            stroke: white;
+        }
+
+        .sound-btn.inactive {
+            background: var(--red-pen);
+        }
+
+        .sound-btn.inactive svg {
+            stroke: white;
+        }
+
+        .sound-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 4px 4px 0 rgba(0, 0, 0, .15);
+        }
+
+        .sound-device-selector {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            border: 2px solid var(--ink);
+            background: white;
+            cursor: pointer;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            transition: all .2s;
+            box-shadow: 2px 2px 0 rgba(0, 0, 0, .1);
+        }
+
+        .sound-device-selector:hover {
+            transform: scale(1.1);
+            background: var(--highlight);
+        }
+
+        .sound-device-selector svg {
+            width: 12px;
+            height: 12px;
+            stroke: var(--ink);
+            stroke-width: 2;
+            fill: none;
+        }
+
+        @media(max-width:768px) {
+            .sound-control-wrapper {
+                bottom: 100px;
+                left: 16px;
+            }
+
+            .board-btn-wrapper {
+                bottom: 100px;
+                right: 16px;
+            }
+
+            .sound-btn,
+            .board-toggle-btn {
+                width: 42px;
+                height: 42px;
+            }
+
+            .app-container {
+                grid-template-columns: 1fr;
+                grid-template-rows: 55px 1fr 70px;
+                padding: 8px;
+                gap: 8px;
+            }
+
+            /* Sidebar en mode absolu/overlay mobile */
+            .sidebar {
+                position: fixed;
+                right: 0;
+                top: 0;
+                bottom: 0;
+                width: 85%;
+                max-width: 320px;
+                z-index: 2000;
+                transform: translateX(100%);
+                box-shadow: -5px 0 15px rgba(0, 0, 0, .3);
+                transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            }
+
+            .sidebar.mobile-open {
+                transform: translateX(0);
+            }
+
+            .video-element {
+                border-width: 2px;
+            }
+
+            .controls {
+                padding: 8px;
+                gap: 15px;
+            }
+
+            .control-btn {
+                width: 50px;
+                height: 50px;
+            }
+
+            #chatInput {
+                padding: 14px 12px;
+                font-size: 16px;
+            }
+
+            .send-btn {
+                width: 46px;
+                height: 46px;
+                font-size: 20px;
+            }
+        }
+
+        .sidebar-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.35);
+            z-index: 1999;
+        }
+
+        .sidebar-overlay.active {
+            display: block;
+        }
+
+        @media (max-height: 500px) and (orientation: landscape) {
+            .app-container {
+                display: block;
+                padding: 0;
+                height: 100dvh;
+                width: 100vw;
+                overflow: hidden;
+            }
+
+            .header {
+                position: absolute;
+                top: 5px;
+                left: 5px;
+                background: transparent;
+                border: none;
+                box-shadow: none;
+                padding: 0;
+                width: auto;
+                z-index: 20;
+            }
+
+            .header::before,
+            .room-info {
+                display: none;
+            }
+
+            .logo-header {
+                font-size: 14px;
+                background: var(--highlight);
+                padding: 2px 5px;
+                border: 2px solid var(--ink);
+            }
+
+            .video-grid {
+                width: 100%;
+                height: 100%;
+                border: none;
+                box-shadow: none;
+                border-radius: 0;
+                padding: 5px;
+            }
+
+            .controls {
+                position: fixed;
+                bottom: 10px;
+                left: 50%;
+                transform: translateX(-50%);
+                right: auto;
+                top: auto;
+                width: auto;
+                height: auto;
+                flex-direction: row;
+                background: transparent;
+                border: none;
+                box-shadow: none;
+                gap: 15px;
+                z-index: 50;
+                padding: 0;
+            }
+
+            .control-btn {
+                width: 50px;
+                height: 50px;
+                opacity: 0.8;
+                box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+            }
+
+            .control-btn:hover {
+                opacity: 1;
+            }
+
+            .sidebar {
+                position: fixed;
+                top: 0;
+                right: 0;
+                bottom: 0;
+                width: 320px;
+                max-width: 60%;
+                background: var(--paper-transparent);
+                backdrop-filter: blur(5px);
+                border-left: 2px solid var(--ink);
+                z-index: 2000;
+                transform: translateX(100%);
+                box-shadow: none;
+            }
+
+            .sidebar.mobile-open {
+                transform: translateX(0);
+            }
+
+            .sidebar-overlay.active {
+                display: block;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="app-container" id="appContainer">
+        <div class="header">
+            <div class="logo-header">KERNE</div>
+            <div class="room-info" id="roomInfo">Connexion...</div>
+        </div>
+        <div class="video-grid" id="videoGrid"></div>
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-tabs">
+                <button class="sidebar-tab active" data-tab="chat">CHAT</button>
+                <button class="sidebar-tab" data-tab="participants">PARTICIPANTS</button>
+            </div>
+            <div class="sidebar-content">
+                <div class="tab-panel active" id="chatPanel">
+                    <div id="chatMessages"></div>
+                    <form id="chatForm"><input type="text" id="chatInput" placeholder="Ecris un message..."
+                            autocomplete="off"><button type="submit" class="send-btn">➤</button></form>
+                </div>
+                <div class="tab-panel" id="participantsPanel">
+                    <div id="participantsList"></div>
+                </div>
+            </div>
+        </div>
+        <div class="controls">
+            <div class="control-wrapper" id="camWrapper">
+                <button class="control-btn active" id="camBtn" title="Caméra"><svg viewBox="0 0 24 24">
+                        <path d="M23 7l-7 5 7 5V7z" />
+                        <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+                    </svg></button>
+                <button class="device-selector-btn" id="camSelector" title="Choisir caméra"><svg viewBox="0 0 24 24">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg></button>
+                <div class="device-menu" id="camMenu"></div>
+            </div>
+            <div class="control-wrapper" id="micWrapper">
+                <button class="control-btn active" id="micBtn" title="Micro"><svg viewBox="0 0 24 24">
+                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                        <line x1="12" y1="19" x2="12" y2="23" />
+                        <line x1="8" y1="23" x2="16" y2="23" />
+                    </svg></button>
+                <button class="device-selector-btn" id="micSelector" title="Choisir micro"><svg viewBox="0 0 24 24">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg></button>
+                <div class="device-menu" id="micMenu"></div>
+            </div>
+            <button class="control-btn" id="sidebarToggle" title="Chat" style="opacity:1"><svg viewBox="0 0 24 24">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                </svg></button>
+            <button class="control-btn" id="leaveBtn" title="Quitter"><svg viewBox="0 0 24 24">
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                    <polyline points="16 17 21 12 16 7" />
+                    <line x1="21" y1="12" x2="9" y2="12" />
+                </svg></button>
+        </div>
+        <div class="sidebar-overlay" id="sidebarOverlay"></div>
+    </div>
+
+    <div class="sound-control-wrapper">
+        <button class="sound-btn active" id="soundBtn" title="Son">
+            <svg viewBox="0 0 24 24">
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+                <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+            </svg>
+        </button>
+        <button class="sound-device-selector" id="soundSelector" title="Choisir sortie audio"><svg viewBox="0 0 24 24">
+                <polyline points="6 9 12 15 18 9"></polyline>
+            </svg></button>
+        <div class="sound-device-menu" id="soundMenu"></div>
+    </div>
+
+    <div class="board-btn-wrapper">
+        <button class="board-toggle-btn" id="boardToggleBtn" title="Tableaux Blancs">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 19l7-7 3 3-7 7-3-3z"></path>
+                <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"></path>
+                <line x1="2" y1="2" x2="22" y2="22"></line>
+            </svg>
+        </button>
+    </div>
+
+    <div class="board-modal" id="boardModal">
+        <div class="board-header">
+            <div class="board-title" id="boardHeaderTitle">DOSSIER DE DESSINS</div>
+            <button class="close-board-modal" id="closeBoardModal">×</button>
+        </div>
+
+        <div class="board-content">
+            <div id="boardListView" class="board-view active"
+                style="width:100%; height:100%; overflow-y:auto; display:flex; flex-direction:column;">
+                <div style="padding:20px;">
+                    <div class="create-board-btn" id="createBoardBtn"><span>+</span> Nouvelle Page Blanche</div>
+                    <div id="boardListContainer"
+                        style="display:flex; flex-direction:column; gap:15px; margin-top:20px;"></div>
+                </div>
+            </div>
+
+            <div id="boardDrawView" class="board-view">
+                <div class="canvas-toolbar">
+                    <button class="back-btn" id="backToBoards"
+                        style="font-family:'Oswald'; border:2px solid var(--ink); padding:2px 8px; cursor:pointer; background:white;">↩
+                        RETOUR</button>
+                    <div class="separator"></div>
+                    <div class="tool-btn active" data-tool="pen" title="Crayon"><svg width="18" height="18"
+                            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 19l7-7 3 3-7 7-3-3z"></path>
+                            <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"></path>
+                        </svg></div>
+                    <div class="tool-btn" data-tool="text" title="Texte (T)"><svg width="18" height="18"
+                            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="4 7 4 4 20 4 20 7"></polyline>
+                            <line x1="9" y1="20" x2="15" y2="20"></line>
+                            <line x1="12" y1="4" x2="12" y2="20"></line>
+                        </svg></div>
+                    <div class="tool-btn" data-tool="eraser" title="Gomme"><svg width="18" height="18"
+                            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="2" y="4" width="20" height="12" rx="2" />
+                            <line x1="2" y1="10" x2="22" y2="10" />
+                        </svg></div>
+                    <div class="separator"></div>
+                    <div class="color-dot active" data-color="#1a1a1a" style="background:#1a1a1a"></div>
+                    <div class="color-dot" data-color="#d32f2f" style="background:#d32f2f"></div>
+                    <div class="color-dot" data-color="#2196f3" style="background:#2196f3"></div>
+                    <div class="color-dot" data-color="#4caf50" style="background:#4caf50"></div>
+                    <div class="separator"></div>
+                    <button class="tool-btn" id="undoBtn" title="Annuler"><svg width="16" height="16"
+                            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M3 7v6h6" />
+                            <path d="M21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13" />
+                        </svg></button>
+                    <button class="tool-btn" id="redoBtn" title="Rétablir"><svg width="16" height="16"
+                            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 7v6h-6" />
+                            <path d="M3 17a9 9 0 019-9 9 9 0 016 2.3L21 13" />
+                        </svg></button>
+                </div>
+                <div class="canvas-container" id="canvasContainer">
+                    <canvas id="drawingCanvas"></canvas>
+                    <div id="textInputWrapper">
+                        <input type="text" id="textInputOverlay" placeholder="Tape ton texte">
+                        <button id="textInputConfirm">OK</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        'use strict';
+        const ICE_CONFIG = {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' },
+                { urls: "turn:global.relay.metered.ca:80", username: "5f21751290ccb4942cbf1f12", credential: "wBno95Vvji6r6ko/" },
+                { urls: "turn:global.relay.metered.ca:80?transport=tcp", username: "5f21751290ccb4942cbf1f12", credential: "wBno95Vvji6r6ko/" },
+                { urls: "turn:global.relay.metered.ca:443", username: "5f21751290ccb4942cbf1f12", credential: "wBno95Vvji6r6ko/" },
+                { urls: "turns:global.relay.metered.ca:443?transport=tcp", username: "5f21751290ccb4942cbf1f12", credential: "wBno95Vvji6r6ko/" }
+            ], iceCandidatePoolSize: 10
+        };
+
+        // --- GESTION DES TABLEAUX BLANCS ---
+        class WhiteboardManager {
+            constructor(socket, myId) {
+                this.socket = socket;
+                this.myId = myId;
+                this.myName = sessionStorage.getItem('userName') || 'User';
+                this.boards = [];
+                this.currentBoardId = null;
+                this.isDrawing = false;
+                this.color = '#1a1a1a';
+                this.tool = 'pen';
+
+                this.canvas = document.getElementById('drawingCanvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.container = document.getElementById('canvasContainer');
+
+                // Text tool vars
+                this.textWrapper = document.getElementById('textInputWrapper');
+                this.textInput = document.getElementById('textInputOverlay');
+                this.textConfirm = document.getElementById('textInputConfirm');
+                this.isTyping = false;
+
+                // UI Elements
+                this.modal = document.getElementById('boardModal');
+                this.btn = document.getElementById('boardToggleBtn');
+                this.listContainer = document.getElementById('boardListContainer');
+                this.listView = document.getElementById('boardListView');
+                this.drawView = document.getElementById('boardDrawView');
+
+                // History
+                this.undoStack = {};
+                this.redoStack = {};
+
+                this.setupUI();
+                this.setupSocket();
+                setTimeout(() => this.resizeCanvas(), 500);
+            }
+
+            setupUI() {
+                this.btn.onclick = () => {
+                    const isHidden = getComputedStyle(this.modal).display === 'none';
+                    if (isHidden) {
+                        this.modal.classList.add('show');
+                        this.btn.classList.add('active');
+                        this.btn.classList.remove('has-notif');
+                        this.renderList();
+                        if (this.currentBoardId) setTimeout(() => this.resizeCanvas(), 100);
+                    } else {
+                        this.modal.classList.remove('show');
+                        this.btn.classList.remove('active');
+                    }
+                };
+                document.getElementById('closeBoardModal').onclick = () => {
+                    this.modal.classList.remove('show');
+                    this.btn.classList.remove('active');
+                };
+
+                document.getElementById('createBoardBtn').onclick = () => this.createBoard();
+                document.getElementById('backToBoards').onclick = () => {
+                    this.listView.style.display = 'flex';
+                    this.drawView.style.display = 'none';
+                    document.getElementById('boardHeaderTitle').textContent = "DOSSIER DE DESSINS";
+                    this.currentBoardId = null;
+                    if (this.isTyping) this.cancelText();
+                };
+
+                document.querySelectorAll('.tool-btn[data-tool]').forEach(b => {
+                    b.onclick = () => {
+                        document.querySelectorAll('.tool-btn[data-tool]').forEach(x => x.classList.remove('active'));
+                        b.classList.add('active');
+                        this.tool = b.dataset.tool;
+                    };
+                });
+                document.querySelectorAll('.color-dot').forEach(d => {
+                    d.onclick = () => {
+                        document.querySelectorAll('.color-dot').forEach(x => x.classList.remove('active'));
+                        d.classList.add('active');
+                        this.color = d.dataset.color;
+                    };
+                });
+                document.getElementById('undoBtn').onclick = () => this.undo();
+                document.getElementById('redoBtn').onclick = () => this.redo();
+
+                // DRAWING EVENTS - UNIFIED
+                const start = (e) => this.handleStart(e);
+                const move = (e) => this.handleMove(e);
+                const end = (e) => this.handleEnd(e);
+
+                this.container.addEventListener('mousedown', start);
+                this.container.addEventListener('mousemove', move);
+                window.addEventListener('mouseup', end);
+
+                // Touch events with stopPropagation for better mobile control
+                this.container.addEventListener('touchstart', (e) => {
+                    if (e.target === this.textInput || e.target === this.textConfirm) return;
+                    e.preventDefault(); start(e);
+                }, { passive: false });
+
+                this.container.addEventListener('touchmove', (e) => {
+                    if (e.target === this.textInput || e.target === this.textConfirm) return;
+                    e.preventDefault(); move(e);
+                }, { passive: false });
+
+                this.container.addEventListener('touchend', (e) => {
+                    if (e.target === this.textInput || e.target === this.textConfirm) return;
+                    e.preventDefault(); end(e);
+                }, { passive: false });
+
+                // Text Input Handling
+                this.textConfirm.onclick = (e) => { e.stopPropagation(); this.finishText(); };
+                this.textInput.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') { this.finishText(); }
+                    if (e.key === 'Escape') { this.cancelText(); }
+                });
+
+                window.addEventListener('resize', () => {
+                    if (this.currentBoardId && getComputedStyle(this.modal).display !== 'none') {
+                        this.resizeCanvas();
+                    }
+                });
+            }
+
+            setupSocket() {
+                // CORRECTION CRITIQUE : Ecouter 'room-joined' pour être sûr que le roomId est dispo
+                this.socket.on('room-joined', () => {
+                    this.socket.emit('wb-get-state', { roomId: sessionStorage.getItem('currentRoom') });
+                });
+
+                // Backup au cas où (reconnexion)
+                this.socket.on('connect', () => {
+                    if (sessionStorage.getItem('currentRoom')) {
+                        this.socket.emit('wb-get-state', { roomId: sessionStorage.getItem('currentRoom') });
+                    }
+                });
+
+                this.socket.on('wb-get-state', () => { if (this.boards.length > 0) this.socket.emit('wb-send-state', { roomId: sessionStorage.getItem('currentRoom'), boards: this.boards }); });
+
+                this.socket.on('wb-send-state', (data) => {
+                    let changed = false;
+                    let currentBoardUpdated = false;
+
+                    data.boards.forEach(remoteBoard => {
+                        const localBoard = this.boards.find(b => b.id === remoteBoard.id);
+                        if (!localBoard) {
+                            this.boards.push(remoteBoard);
+                            changed = true;
+                        } else {
+                            // CORRECTION SYNC : Si le tableau distant a plus de données, on écrase le local
+                            if (remoteBoard.data && remoteBoard.data.length > localBoard.data.length) {
+                                localBoard.data = remoteBoard.data;
+                                if (this.currentBoardId === localBoard.id) currentBoardUpdated = true;
+                            }
+                        }
+                    });
+                    if (changed && this.listView.style.display !== 'none') this.renderList();
+                    if (currentBoardUpdated) this.redrawCanvas();
+                });
+
+                this.socket.on('wb-create', (board) => { this.boards.push(board); this.notify(); this.renderList(); });
+                this.socket.on('wb-draw', ({ boardId, data }) => {
+                    const board = this.boards.find(b => b.id === boardId);
+                    if (board) {
+                        board.data.push(data);
+                        if (this.currentBoardId === boardId) this.drawItem(data);
+                        else this.notify();
+                    }
+                });
+                this.socket.on('wb-delete', (boardId) => {
+                    this.boards = this.boards.filter(b => b.id !== boardId);
+                    if (this.currentBoardId === boardId) document.getElementById('backToBoards').click();
+                    this.renderList();
+                });
+                this.socket.on('wb-undo-redo', ({ boardId, data }) => {
+                    const board = this.boards.find(b => b.id === boardId);
+                    if (board) { board.data = data; if (this.currentBoardId === boardId) this.redrawCanvas(); }
+                });
+            }
+
+            createBoard() {
+                const id = 'board-' + Math.random().toString(36).substr(2, 9);
+                const myBoardsCount = this.boards.filter(b => b.owner === this.myName).length + 1;
+                const name = `Tableau ${myBoardsCount} de ${this.myName}`;
+                const newBoard = { id, name, owner: this.myName, data: [] };
+                this.boards.push(newBoard);
+                this.socket.emit('wb-create', { roomId: sessionStorage.getItem('currentRoom'), ...newBoard });
+                this.openBoard(id);
+            }
+
+            openBoard(id) {
+                this.currentBoardId = id;
+                const board = this.boards.find(b => b.id === id);
+                if (!board) return;
+                document.getElementById('boardHeaderTitle').textContent = board.name.toUpperCase();
+                this.listView.style.display = 'none';
+                this.drawView.style.display = 'flex';
+                this.resizeCanvas();
+            }
+
+            deleteBoard(e, id) {
+                e.stopPropagation();
+                if (confirm('Supprimer ce tableau pour tout le monde ?')) {
+                    this.boards = this.boards.filter(b => b.id !== id);
+                    this.socket.emit('wb-delete', { roomId: sessionStorage.getItem('currentRoom'), boardId: id });
+                    this.renderList();
+                }
+            }
+
+            renderList() {
+                this.listContainer.innerHTML = '';
+                this.boards.forEach(b => {
+                    const div = document.createElement('div');
+                    div.className = 'board-item';
+                    div.innerHTML = `
+                        <div style="overflow:hidden">
+                            <div style="font-weight:bold; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${b.name}</div>
+                            <div class="board-item-meta">Créé par ${b.owner}</div>
+                        </div>
+                    `;
+                    const delBtn = document.createElement('button');
+                    delBtn.className = 'delete-board-btn';
+                    delBtn.innerHTML = '🗑️';
+                    delBtn.onclick = (e) => this.deleteBoard(e, b.id);
+                    div.onclick = () => this.openBoard(b.id);
+                    div.appendChild(delBtn);
+                    this.listContainer.appendChild(div);
+                });
+            }
+
+            resizeCanvas() {
+                if (!this.container.offsetWidth) return;
+                this.canvas.width = this.container.offsetWidth;
+                this.canvas.height = this.container.offsetHeight;
+                if (this.currentBoardId) this.redrawCanvas();
+            }
+
+            getPointerPos(e) {
+                const rect = this.canvas.getBoundingClientRect();
+                const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                return { x: clientX - rect.left, y: clientY - rect.top };
+            }
+
+            handleStart(e) {
+                if (!this.currentBoardId) return;
+                const pos = this.getPointerPos(e);
+
+                if (this.tool === 'text') {
+                    if (!this.isTyping) {
+                        this.startText(pos.x, pos.y);
+                    }
+                    return;
+                }
+
+                this.isDrawing = true;
+                this.lastX = pos.x;
+                this.lastY = pos.y;
+
+                this.currentStroke = {
+                    type: 'line',
+                    points: [{ x: this.lastX / this.canvas.width, y: this.lastY / this.canvas.height }],
+                    color: this.tool === 'eraser' ? '#ffffff' : this.color,
+                    width: this.tool === 'eraser' ? 25 : 3,
+                    isEraser: this.tool === 'eraser'
+                };
+
+                this.ctx.beginPath();
+                this.ctx.arc(this.lastX, this.lastY, this.currentStroke.width / 2, 0, Math.PI * 2);
+                this.ctx.fillStyle = this.currentStroke.color;
+                this.ctx.fill();
+            }
+
+            handleMove(e) {
+                if (!this.isDrawing) return;
+                const pos = this.getPointerPos(e);
+
+                this.ctx.beginPath();
+                this.ctx.moveTo(this.lastX, this.lastY);
+                this.ctx.lineTo(pos.x, pos.y);
+                this.ctx.strokeStyle = this.currentStroke.color;
+                this.ctx.lineWidth = this.currentStroke.width;
+                this.ctx.lineCap = 'round';
+                this.ctx.lineJoin = 'round';
+                if (this.currentStroke.isEraser) this.ctx.globalCompositeOperation = 'destination-out';
+                else this.ctx.globalCompositeOperation = 'source-over';
+
+                this.ctx.stroke();
+                this.ctx.globalCompositeOperation = 'source-over';
+
+                this.currentStroke.points.push({ x: pos.x / this.canvas.width, y: pos.y / this.canvas.height });
+                [this.lastX, this.lastY] = [pos.x, pos.y];
+            }
+
+            handleEnd() {
+                if (!this.isDrawing) return;
+                this.isDrawing = false;
+                if (this.currentStroke.points.length > 0) {
+                    this.pushData(this.currentStroke);
+                }
+            }
+
+            startText(x, y) {
+                this.isTyping = true;
+                this.textX = x;
+                this.textY = y;
+                this.textWrapper.style.display = 'block';
+                this.textWrapper.style.left = Math.min(x, this.canvas.width - 200) + 'px';
+                this.textWrapper.style.top = y + 'px';
+                this.textInput.style.color = this.color;
+                this.textInput.value = '';
+                this.textInput.focus();
+            }
+
+            finishText() {
+                if (!this.isTyping) return;
+                const text = this.textInput.value.trim();
+                if (text) {
+                    const data = {
+                        type: 'text',
+                        x: this.textX / this.canvas.width,
+                        y: this.textY / this.canvas.height,
+                        text: text,
+                        color: this.color,
+                        font: "20px 'Courier Prime'"
+                    };
+                    this.pushData(data);
+                    this.drawTextLocal(data);
+                }
+                this.cancelText();
+            }
+
+            cancelText() {
+                this.isTyping = false;
+                this.textWrapper.style.display = 'none';
+                this.textInput.value = '';
+            }
+
+            drawTextLocal(data) {
+                const x = data.x * this.canvas.width;
+                const y = data.y * this.canvas.height;
+                this.ctx.font = data.font || "20px 'Courier Prime'";
+                this.ctx.fillStyle = data.color;
+                this.ctx.textBaseline = 'top';
+                this.ctx.fillText(data.text, x, y);
+            }
+
+            pushData(data) {
+                const board = this.boards.find(b => b.id === this.currentBoardId);
+                if (board) {
+                    board.data.push(data);
+                    this.socket.emit('wb-draw', {
+                        roomId: sessionStorage.getItem('currentRoom'),
+                        boardId: this.currentBoardId,
+                        data: data
+                    });
+                    if (!this.undoStack[this.currentBoardId]) this.undoStack[this.currentBoardId] = [];
+                    this.undoStack[this.currentBoardId].push([...board.data]);
+                }
+            }
+
+            drawItem(item) {
+                if (item.type === 'text') {
+                    this.drawTextLocal(item);
+                } else {
+                    if (item.points.length < 1) return;
+                    const w = this.canvas.width;
+                    const h = this.canvas.height;
+
+                    this.ctx.beginPath();
+                    this.ctx.lineCap = 'round';
+                    this.ctx.lineJoin = 'round';
+                    this.ctx.strokeStyle = item.color;
+                    this.ctx.lineWidth = item.width;
+
+                    if (item.isEraser) this.ctx.globalCompositeOperation = 'destination-out';
+                    else this.ctx.globalCompositeOperation = 'source-over';
+
+                    if (item.points.length === 1) {
+                        this.ctx.arc(item.points[0].x * w, item.points[0].y * h, item.width / 2, 0, Math.PI * 2);
+                        this.ctx.fillStyle = item.color;
+                        this.ctx.fill();
+                    } else {
+                        this.ctx.moveTo(item.points[0].x * w, item.points[0].y * h);
+                        for (let i = 1; i < item.points.length; i++) {
+                            this.ctx.lineTo(item.points[i].x * w, item.points[i].y * h);
+                        }
+                        this.ctx.stroke();
+                    }
+                    this.ctx.globalCompositeOperation = 'source-over';
+                }
+            }
+
+            redrawCanvas() {
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                const board = this.boards.find(b => b.id === this.currentBoardId);
+                if (board) {
+                    board.data.forEach(item => this.drawItem(item));
+                }
+            }
+
+            undo() {
+                const board = this.boards.find(b => b.id === this.currentBoardId);
+                if (board && board.data.length > 0) {
+                    if (!this.redoStack[this.currentBoardId]) this.redoStack[this.currentBoardId] = [];
+                    this.redoStack[this.currentBoardId].push(board.data.pop());
+                    this.redrawCanvas();
+                    this.syncUndoRedo(board);
+                }
+            }
+
+            redo() {
+                if (this.redoStack[this.currentBoardId] && this.redoStack[this.currentBoardId].length > 0) {
+                    const board = this.boards.find(b => b.id === this.currentBoardId);
+                    board.data.push(this.redoStack[this.currentBoardId].pop());
+                    this.redrawCanvas();
+                    this.syncUndoRedo(board);
+                }
+            }
+
+            syncUndoRedo(board) {
+                this.socket.emit('wb-undo-redo', {
+                    roomId: sessionStorage.getItem('currentRoom'),
+                    boardId: this.currentBoardId,
+                    data: board.data
+                });
+            }
+
+            notify() {
+                if (getComputedStyle(this.modal).display === 'none') {
+                    this.btn.classList.add('has-notif');
+                    UI.showToast("📝 Activité sur un tableau blanc");
+                }
+            }
+        }
+
+        class WebRTCManager {
+            constructor() {
+                this.socket = null; this.localStream = null; this.peers = new Map();
+                this.userInfo = new Map(); this.mySocketId = null;
+                this.currentRoom = sessionStorage.getItem('currentRoom') || null;
+                this.userName = sessionStorage.getItem('userName');
+                this.userLevel = sessionStorage.getItem('userLevel');
+                this.userId = sessionStorage.getItem('userId') || `user-${Date.now()}`;
+
+                this.isCamOn = sessionStorage.getItem('isCamOn') !== 'false';
+                this.isMicOn = sessionStorage.getItem('isMicOn') !== 'false';
+                this.isSoundOn = sessionStorage.getItem('isSoundOn') !== 'false';
+                this.selectedVideoDevice = localStorage.getItem('selectedVideoDevice');
+                this.selectedAudioDevice = localStorage.getItem('selectedAudioDevice');
+                this.hasMediaPermissions = { video: false, audio: false };
+
+                this.userColors = new Map(); this.colorIndex = 0;
+            }
+
+            async init() {
+                if (!this.userName || !this.userLevel) { window.location.href = '/'; return; }
+                await this.enumerateDevices();
+                await this.getLocalStream();
+                this.socket = io({ transports: ['websocket', 'polling'] });
+                this.setupSocketEvents();
+                this.wb = new WhiteboardManager(this.socket, this.userId);
+            }
+
+            async getLocalStream(retry = 0) {
+                try {
+                    const constraints = {
+                        video: { deviceId: this.selectedVideoDevice ? { exact: this.selectedVideoDevice } : undefined, width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 20 }, facingMode: 'user' },
+                        audio: { deviceId: this.selectedAudioDevice ? { exact: this.selectedAudioDevice } : undefined, echoCancellation: true, noiseSuppression: true }
+                    };
+
+                    try {
+                        this.localStream = await navigator.mediaDevices.getUserMedia(constraints);
+                        this.hasMediaPermissions = { video: true, audio: true };
+                    } catch (err) {
+                        if ((err.name === 'NotReadableError' || err.name === 'TrackStartError') && retry < 2) {
+                            console.log('Caméra occupée, retry...');
+                            await new Promise(r => setTimeout(r, 500));
+                            return this.getLocalStream(retry + 1);
+                        }
+                        try {
+                            this.localStream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
+                            this.hasMediaPermissions = { video: false, audio: true };
+                            UI.showToast('⚠️ Audio seul (problème vidéo)', false, 'warning');
+                        } catch (e) { throw err; }
+                    }
+
+                    if (this.localStream) {
+                        if (!this.isCamOn) { this.localStream.getVideoTracks().forEach(t => t.enabled = false); UI.updateLocalCameraUI(false); }
+                        if (!this.isMicOn) { this.localStream.getAudioTracks().forEach(t => t.enabled = false); UI.updateLocalMicUI(false); }
+                        if (this.mySocketId) UI.attachStream(this.mySocketId, this.localStream);
+                    }
+                } catch (err) {
+                    console.error(err);
+                    UI.showToast('❌ Erreur accès périphériques', true);
+                }
+            }
+
+            async enumerateDevices() {
+                const devs = await navigator.mediaDevices.enumerateDevices();
+                this.updateDeviceMenus(devs);
+                navigator.mediaDevices.ondevicechange = async () => this.updateDeviceMenus(await navigator.mediaDevices.enumerateDevices());
+            }
+
+            updateDeviceMenus(devs) {
+                const fills = (type, el, sel) => {
+                    const list = devs.filter(d => d.kind === type);
+                    el.innerHTML = '';
+                    if (list.length > 1) document.getElementById(sel).style.display = 'flex';
+                    list.forEach(d => {
+                        const div = document.createElement('div'); div.className = 'device-menu-item'; div.textContent = d.label || type;
+                        div.onclick = () => this.switchDevice(type, d.deviceId);
+                        el.appendChild(div);
+                    });
+                };
+                fills('videoinput', document.getElementById('camMenu'), 'camSelector');
+                fills('audioinput', document.getElementById('micMenu'), 'micSelector');
+                fills('audiooutput', document.getElementById('soundMenu'), 'soundSelector');
+            }
+
+            async switchDevice(type, id) {
+                if (type === 'videoinput') { this.selectedVideoDevice = id; localStorage.setItem('selectedVideoDevice', id); }
+                if (type === 'audioinput') { this.selectedAudioDevice = id; localStorage.setItem('selectedAudioDevice', id); }
+                if (type === 'audiooutput') {
+                    document.querySelectorAll('video').forEach(v => v.setSinkId ? v.setSinkId(id) : null);
+                } else {
+                    if (this.localStream) this.localStream.getTracks().forEach(t => t.stop());
+                    await this.getLocalStream();
+                }
+                document.querySelectorAll('.device-menu, .sound-device-menu').forEach(m => m.classList.remove('show'));
+            }
+
+            toggleCamera() {
+                this.isCamOn = !this.isCamOn; sessionStorage.setItem('isCamOn', this.isCamOn);
+                if (this.localStream) this.localStream.getVideoTracks().forEach(t => t.enabled = this.isCamOn);
+                UI.updateLocalCameraUI(this.isCamOn);
+                this.socket.emit('state-change', { roomId: this.currentRoom, peerId: this.socket.id, state: { cam: this.isCamOn } });
+            }
+
+            toggleMic() {
+                this.isMicOn = !this.isMicOn; sessionStorage.setItem('isMicOn', this.isMicOn);
+                if (this.localStream) this.localStream.getAudioTracks().forEach(t => t.enabled = this.isMicOn);
+                UI.updateLocalMicUI(this.isMicOn);
+                this.socket.emit('state-change', { roomId: this.currentRoom, peerId: this.socket.id, state: { mic: this.isMicOn } });
+            }
+
+            toggleSound() {
+                this.isSoundOn = !this.isSoundOn; sessionStorage.setItem('isSoundOn', this.isSoundOn);
+                document.querySelectorAll('video').forEach(v => {
+                    if (v.closest('.video-element').id !== `video-${this.mySocketId}`) v.muted = !this.isSoundOn;
+                });
+                UI.updateSoundUI(this.isSoundOn);
+                this.socket.emit('state-change', { roomId: this.currentRoom, peerId: this.socket.id, state: { sound: this.isSoundOn } });
+            }
+
+            setupSocketEvents() {
+                this.socket.on('connect', () => {
+                    this.mySocketId = this.socket.id;
+                    UI.updateLocalCameraUI(this.isCamOn);
+                    this.socket.emit('join-room', { name: this.userName, level: this.userLevel, peerId: this.socket.id, userId: this.userId });
+                });
+                this.socket.on('room-joined', ({ roomId, users, userStates }) => {
+                    this.currentRoom = roomId; sessionStorage.setItem('currentRoom', roomId);
+                    this.userInfo.set(this.mySocketId, { name: this.userName, level: this.userLevel });
+                    UI.addVideo(this.mySocketId, this.localStream, this.userName, this.userLevel, true);
+
+                    UI.updatePeerState(this.mySocketId, { cam: this.isCamOn, mic: this.isMicOn, sound: this.isSoundOn });
+
+                    users.forEach(u => { if (u.socketId !== this.mySocketId) { this.userInfo.set(u.socketId, u); UI.addVideo(u.socketId, null, u.name, u.level, false); this.createPeer(u.socketId, true); } });
+                    UI.updateParticipants(this.userInfo, this.mySocketId);
+
+                    if (userStates) userStates.forEach(s => UI.updatePeerState(s.peerId, s.state));
+
+                    this.socket.emit('state-change', { roomId: this.currentRoom, peerId: this.mySocketId, state: { cam: this.isCamOn, mic: this.isMicOn, sound: this.isSoundOn } });
+                });
+                this.socket.on('user-joined', (u) => {
+                    this.userInfo.set(u.socketId, u); UI.addVideo(u.socketId, null, u.name, u.level, false); UI.updateParticipants(this.userInfo, this.mySocketId); UI.showToast(`${u.name} rejoint`);
+                    this.socket.emit('state-change', { roomId: this.currentRoom, peerId: this.mySocketId, state: { cam: this.isCamOn, mic: this.isMicOn, sound: this.isSoundOn } });
+                });
+                this.socket.on('signal', ({ from, signal }) => { if (!this.peers.has(from)) this.createPeer(from, false); this.peers.get(from).signal(signal); });
+                this.socket.on('user-left', ({ socketId }) => { this.removePeer(socketId); });
+                this.socket.on('chat-message', ({ from, message }) => UI.addChatMessage(from, message, from === this.userName));
+
+                this.socket.on('state-change', ({ peerId, state }) => {
+                    const u = this.userInfo.get(peerId);
+                    if (u) { u.state = { ...u.state, ...state }; UI.updatePeerState(peerId, u.state); }
+                    else if (peerId === this.mySocketId) { UI.updatePeerState(peerId, state); }
+                });
+            }
+
+            createPeer(peerId, initiator) {
+                const peer = new SimplePeer({ initiator, stream: this.localStream, config: ICE_CONFIG });
+                peer.on('signal', (sig) => this.socket.emit('signal', { to: peerId, signal: sig }));
+                peer.on('stream', (stream) => UI.attachStream(peerId, stream));
+                peer.on('error', () => { if (initiator) setTimeout(() => { this.removePeer(peerId); this.createPeer(peerId, true); }, 3000); });
+                this.peers.set(peerId, peer);
+            }
+
+            removePeer(peerId) {
+                if (this.peers.has(peerId)) { this.peers.get(peerId).destroy(); this.peers.delete(peerId); }
+                this.userInfo.delete(peerId); UI.removeVideo(peerId); UI.updateParticipants(this.userInfo, this.mySocketId);
+            }
+
+            getColorForUser(id) {
+                if (!this.userColors.has(id)) { this.colorIndex = (this.colorIndex % 6) + 1; this.userColors.set(id, `color-${this.colorIndex}`); }
+                return this.userColors.get(id);
+            }
+        }
+
+        class UIManager {
+            constructor() {
+                this.videoGrid = document.getElementById('videoGrid');
+                this.participantsList = document.getElementById('participantsList');
+            }
+
+            addVideo(peerId, stream, name, level, isLocal) {
+                if (document.getElementById(`video-${peerId}`)) return;
+                const c = document.createElement('div'); c.className = 'video-element' + (!isLocal ? ' joining' : ''); c.id = `video-${peerId}`;
+                const v = document.createElement('video'); v.autoplay = true; v.playsInline = true;
+                if (isLocal) { v.muted = true; v.style.transform = 'scaleX(-1)'; if (stream) v.srcObject = stream; }
+                else { v.muted = !manager.isSoundOn; }
+
+                const color = manager.getColorForUser(peerId);
+
+                c.innerHTML = `
+                    <div class="video-avatar" style="display:${stream ? 'none' : 'flex'}"><div class="avatar-circle ${color}">${(name || 'U').charAt(0)}</div><div class="avatar-name">${name}</div></div>
+                    <div class="video-overlay"><div class="video-name">${name} (${level})</div></div>
+                    <button class="fullscreen-btn">⛶</button>
+                    <div class="status-badge status-mic" title="Micro coupé"><svg viewBox="0 0 24 24"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M19 10v2a7 7 0 0 1-2.9 5.69M5 10v2a7 7 0 0 0 11.9 4.11"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></div>
+                    <div class="status-badge status-sound" title="Son coupé"><svg viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line></svg></div>
+                `;
+                c.insertBefore(v, c.firstChild);
+                c.querySelector('.fullscreen-btn').onclick = (e) => { e.stopPropagation(); this.toggleFullscreen(peerId); };
+                this.videoGrid.appendChild(c); this.resizeGrid();
+            }
+
+            attachStream(peerId, stream) {
+                const c = document.getElementById(`video-${peerId}`); if (!c) return;
+                c.querySelector('video').srcObject = stream;
+                c.querySelector('video').style.display = 'block';
+                c.querySelector('.video-avatar').style.display = 'none';
+            }
+
+            removeVideo(peerId) { const el = document.getElementById(`video-${peerId}`); if (el) el.remove(); this.resizeGrid(); }
+
+            updateLocalCameraUI(isOn) {
+                const btn = document.getElementById('camBtn');
+                btn.classList.toggle('active', isOn); btn.classList.toggle('inactive', !isOn);
+                const local = document.getElementById(`video-${manager.mySocketId}`);
+                if (local) {
+                    local.querySelector('video').style.display = isOn ? 'block' : 'none';
+                    local.querySelector('.video-avatar').style.display = isOn ? 'none' : 'flex';
+                }
+            }
+
+            updateLocalMicUI(isOn) {
+                const btn = document.getElementById('micBtn'); btn.classList.toggle('active', isOn); btn.classList.toggle('inactive', !isOn);
+                btn.innerHTML = isOn ? '<svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>' : '<svg viewBox="0 0 24 24"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M19 10v2a7 7 0 0 1-2.9 5.69M5 10v2a7 7 0 0 0 11.9 4.11"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>';
+                this.updatePeerState(manager.mySocketId, { mic: isOn });
+            }
+
+            updateSoundUI(isOn) {
+                const btn = document.getElementById('soundBtn'); btn.classList.toggle('active', isOn); btn.classList.toggle('inactive', !isOn);
+                btn.innerHTML = isOn ? '<svg viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>' : '<svg viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line></svg>';
+                this.updatePeerState(manager.mySocketId, { sound: isOn });
+            }
+
+            updatePeerState(peerId, state) {
+                const c = document.getElementById(`video-${peerId}`); if (!c) return;
+
+                if (state.cam !== undefined) {
+                    c.querySelector('video').style.display = state.cam ? 'block' : 'none';
+                    c.querySelector('.video-avatar').style.display = state.cam ? 'none' : 'flex';
+                }
+
+                if (state.mic !== undefined) {
+                    c.classList.toggle('mic-off', !state.mic);
+                }
+
+                if (state.sound !== undefined) {
+                    c.classList.toggle('sound-off', !state.sound);
+                }
+            }
+
+            toggleFullscreen(peerId) {
+                const grid = document.getElementById('videoGrid');
+                if (grid.classList.contains('fullscreen-mode')) {
+                    grid.classList.remove('fullscreen-mode');
+                    document.querySelectorAll('.fullscreen-active').forEach(e => e.classList.remove('fullscreen-active'));
+                } else {
+                    grid.classList.add('fullscreen-mode');
+                    document.getElementById(`video-${peerId}`).classList.add('fullscreen-active');
+                }
+                this.resizeGrid();
+            }
+
+            updateParticipants(map, myId) {
+                this.participantsList.innerHTML = '';
+                map.forEach((u, id) => {
+                    const d = document.createElement('div'); d.className = `participant-item ${manager.getColorForUser(id)}`;
+                    d.innerHTML = `<div class="participant-name">${u.name} ${id === myId ? '(Moi)' : ''}</div>`;
+                    this.participantsList.appendChild(d);
+                });
+                document.getElementById('roomInfo').textContent = `Salle • ${map.size}`;
+            }
+
+            addChatMessage(from, msg, isMe) {
+                const d = document.createElement('div'); d.className = 'chat-message' + (isMe ? ' me' : '');
+                d.innerHTML = `<div class="chat-message-author">${from}<span class="chat-message-time">${new Date().toLocaleTimeString().slice(0, 5)}</span></div><div>${msg}</div>`;
+                const c = document.getElementById('chatMessages'); c.appendChild(d); c.scrollTop = c.scrollHeight;
+                if (!isMe && document.getElementById('appContainer').classList.contains('sidebar-closed')) document.getElementById('sidebarToggle').classList.add('has-notif');
+            }
+
+            showToast(msg, err = false, type = '') {
+                const t = document.getElementById('toast'); t.textContent = msg; t.className = `toast show ${err ? 'error' : ''} ${type}`;
+                setTimeout(() => t.classList.remove('show'), 3000);
+            }
+
+            resizeGrid() {
+                const vids = [...this.videoGrid.querySelectorAll('.video-element')];
+                if (!vids.length) return;
+
+                const rect = this.videoGrid.getBoundingClientRect();
+                const count = vids.length;
+
+                // --- FIX CENTRAGE ---
+                // On enlève le padding de la grille du calcul de largeur disponible
+                const padding = 20; // Correspond au padding:10px * 2 cotés
+                const gap = 10; // Espace entre les vidéos
+
+                const availW = rect.width - padding;
+                const availH = rect.height - padding;
+
+                let best = { w: 0, h: 0, cols: 1 };
+
+                for (let cols = 1; cols <= count; cols++) {
+                    const rows = Math.ceil(count / cols);
+
+                    // Calcul largeur max possible par vidéo en tenant compte des gaps
+                    let w = (availW - (cols - 1) * gap) / cols;
+
+                    // Calcul hauteur
+                    let h = w / (16 / 9);
+
+                    // Si ça dépasse en hauteur, on recalcule basé sur la hauteur dispo
+                    if (h * rows + (rows - 1) * gap > availH) {
+                        h = (availH - (rows - 1) * gap) / rows;
+                        w = h * (16 / 9);
+                    }
+
+                    if (w > best.w) {
+                        best = { w, h, cols };
+                    }
+                }
+
+                vids.forEach(v => {
+                    v.style.width = best.w + 'px';
+                    v.style.height = best.h + 'px';
+                });
+            }
+        }
+
+        const manager = new WebRTCManager();
+        const UI = new UIManager();
+
+        window.addEventListener('load', () => {
+            if (!sessionStorage.getItem('userName')) { window.location.href = '/'; return; }
+            UI.updateSoundUI(manager.isSoundOn);
+            manager.init();
+        });
+
+        // Event Listeners UI
+        document.getElementById('camBtn').onclick = () => manager.toggleCamera();
+        document.getElementById('micBtn').onclick = () => manager.toggleMic();
+        document.getElementById('soundBtn').onclick = () => manager.toggleSound();
+        document.getElementById('leaveBtn').onclick = () => { window.location.href = '/'; };
+        document.getElementById('chatForm').onsubmit = (e) => {
+            e.preventDefault(); const i = document.getElementById('chatInput');
+            if (i.value.trim()) { manager.socket.emit('chat-message', { roomId: manager.currentRoom, message: i.value }); i.value = ''; }
+        };
+        document.getElementById('sidebarToggle').onclick = function () {
+            this.classList.remove('has-notif');
+            // Gestion ouverture Sidebar Mobile & Overlay
+            if (window.innerWidth <= 768) {
+                document.getElementById('sidebar').classList.toggle('mobile-open');
+                document.getElementById('sidebarOverlay').classList.toggle('active');
+                document.body.classList.toggle('sidebar-open');
+            }
+            else {
+                document.getElementById('appContainer').classList.toggle('sidebar-closed');
+            }
+            setTimeout(() => UI.resizeGrid(), 450);
+        };
+
+        document.querySelectorAll('.sidebar-tab').forEach(t => t.onclick = (e) => {
+            document.querySelectorAll('.sidebar-tab').forEach(x => x.classList.remove('active')); e.target.classList.add('active');
+            document.querySelectorAll('.tab-panel').forEach(x => x.classList.remove('active'));
+            document.getElementById(`${e.target.dataset.tab}Panel`).classList.add('active');
+        });
+
+        document.getElementById('sidebarOverlay').onclick = () => {
+            document.getElementById('sidebar').classList.remove('mobile-open');
+            document.getElementById('sidebarOverlay').classList.remove('active');
+            document.body.classList.remove('sidebar-open');
+        };
+
+        // Selectors Logic Updated
+        const toggleMenu = (e, id) => {
+            e.stopPropagation();
+            document.querySelectorAll('.device-menu, .sound-device-menu').forEach(m => m.id !== id ? m.classList.remove('show') : null);
+            document.getElementById(id).classList.toggle('show');
+        };
+        document.getElementById('camSelector').onclick = (e) => toggleMenu(e, 'camMenu');
+        document.getElementById('micSelector').onclick = (e) => toggleMenu(e, 'micMenu');
+        document.getElementById('soundSelector').onclick = (e) => toggleMenu(e, 'soundMenu');
+        document.addEventListener('click', () => document.querySelectorAll('.device-menu, .sound-device-menu').forEach(m => m.classList.remove('show')));
+
+        window.addEventListener('resize', () => UI.resizeGrid());
+    </script>
+</body>
+
+</html>
