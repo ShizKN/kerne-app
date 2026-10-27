@@ -603,8 +603,8 @@
         }
         .video-grid.has-screen-share {
             display: grid;
-            grid-template-columns: minmax(0, 1fr) minmax(120px, 22%);
-            grid-template-rows: repeat(4, minmax(0, 1fr));
+            grid-template-columns: minmax(0, 1fr) minmax(180px, 28%);
+            grid-template-rows: repeat(var(--camera-count, 1), minmax(0, 1fr));
             align-content: stretch;
         }
         .video-grid.has-screen-share .screen-share {
@@ -622,6 +622,7 @@
             min-width: 0;
             min-height: 0;
         }
+        .video-grid.has-screen-share .video-element:not(.screen-share) video { object-fit: contain; background: #111; }
         .screen-share video { object-fit: contain !important; background: #111; }
 
         .video-element {
@@ -1352,11 +1353,13 @@
             }
             .permission-notice { top: 68px; font-size: 12px; }
             .video-grid.has-screen-share {
-                grid-template-columns: repeat(4, minmax(0, 1fr));
-                grid-template-rows: minmax(0, 1fr) 90px;
+                grid-template-columns: repeat(var(--camera-count, 1), minmax(0, 1fr));
+                grid-template-rows: minmax(0, 1fr) clamp(140px, 27vh, 220px);
             }
             .video-grid.has-screen-share .screen-share { grid-column: 1 / -1; grid-row: 1; }
             .video-grid.has-screen-share .video-element:not(.screen-share) { grid-column: auto; grid-row: 2; }
+            .screen-sharing .sound-control-wrapper,
+            .screen-sharing .board-btn-wrapper { top: 76px; bottom: auto; }
 
             /* Sidebar en mode absolu/overlay mobile */
             .sidebar {
@@ -2595,6 +2598,8 @@
                 const vids = [...this.videoGrid.querySelectorAll('.video-element')];
                 const sharing = vids.some(v => v.classList.contains('screen-share'));
                 this.videoGrid.classList.toggle('has-screen-share', sharing);
+                document.body.classList.toggle('screen-sharing', sharing);
+                this.videoGrid.style.setProperty('--camera-count', Math.max(1, vids.filter(v => !v.classList.contains('screen-share')).length));
                 if (!vids.length) return;
                 if (sharing) { vids.forEach(v => { v.style.width = ''; v.style.height = ''; }); return; }
 
