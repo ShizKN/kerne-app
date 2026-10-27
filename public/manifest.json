@@ -1,0 +1,11 @@
+{
+  "name": "KERNE - Étudions ensemble",
+  "short_name": "KERNE",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f4f1e8",
+  "theme_color": "#ffeb3b",
+  "icons": [
+    { "src": "/Logo.png", "sizes": "any", "type": "image/png" }
+  ]
+}

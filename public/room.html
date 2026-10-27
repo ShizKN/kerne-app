@@ -7,8 +7,8 @@
         content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
     <title>KERNE - Salle d'étude</title>
     <link rel="icon" type="image/png" href="Logo.png" />
-    <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/simple-peer@9.11.1/simplepeer.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/vendor/simplepeer.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Oswald:wght@600;700&display=swap');
 
@@ -1610,15 +1610,7 @@
 
     <script>
         'use strict';
-        const ICE_CONFIG = {
-            iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' },
-                { urls: "turn:global.relay.metered.ca:80", username: "5f21751290ccb4942cbf1f12", credential: "wBno95Vvji6r6ko/" },
-                { urls: "turn:global.relay.metered.ca:80?transport=tcp", username: "5f21751290ccb4942cbf1f12", credential: "wBno95Vvji6r6ko/" },
-                { urls: "turn:global.relay.metered.ca:443", username: "5f21751290ccb4942cbf1f12", credential: "wBno95Vvji6r6ko/" },
-                { urls: "turns:global.relay.metered.ca:443?transport=tcp", username: "5f21751290ccb4942cbf1f12", credential: "wBno95Vvji6r6ko/" }
-            ], iceCandidatePoolSize: 10
-        };
+        let ICE_CONFIG = { iceServers: [{ urls: 'stun:stun.cloudflare.com:3478' }] };
 
         // --- GESTION DES TABLEAUX BLANCS ---
         class WhiteboardManager {
@@ -2059,6 +2051,10 @@
                 this.socket = null; this.localStream = null; this.peers = new Map();
                 this.userInfo = new Map(); this.mySocketId = null;
                 this.currentRoom = sessionStorage.getItem('currentRoom') || null;
+                this.privateRoomCode = sessionStorage.getItem('privateRoomCode') || null;
+                this.iceReady = false;
+                this.pendingSignals = [];
+                this.lastTransportRestart = 0;
                 this.userName = sessionStorage.getItem('userName');
                 this.userLevel = sessionStorage.getItem('userLevel');
                 this.userId = sessionStorage.getItem('userId') || `user-${Date.now()}`;
@@ -2080,6 +2076,8 @@
                 this.socket = io({ transports: ['websocket', 'polling'] });
                 this.setupSocketEvents();
                 this.wb = new WhiteboardManager(this.socket, this.userId);
+                window.addEventListener('online', () => this.restartTransport());
+                navigator.connection?.addEventListener?.('change', () => this.restartTransport());
             }
 
             async getLocalStream(retry = 0) {
@@ -2176,8 +2174,9 @@
             setupSocketEvents() {
                 this.socket.on('connect', () => {
                     this.mySocketId = this.socket.id;
+                    this.iceReady = false;
                     UI.updateLocalCameraUI(this.isCamOn);
-                    this.socket.emit('join-room', { name: this.userName, level: this.userLevel, peerId: this.socket.id, userId: this.userId });
+                    this.socket.emit('join-room', { name: this.userName, level: this.userLevel, peerId: this.socket.id, userId: this.userId, privateRoomCode: this.privateRoomCode });
                 });
                 this.socket.on('room-joined', ({ roomId, users, userStates }) => {
                     this.currentRoom = roomId; sessionStorage.setItem('currentRoom', roomId);
@@ -2186,19 +2185,41 @@
 
                     UI.updatePeerState(this.mySocketId, { cam: this.isCamOn, mic: this.isMicOn, sound: this.isSoundOn });
 
-                    users.forEach(u => { if (u.socketId !== this.mySocketId) { this.userInfo.set(u.socketId, u); UI.addVideo(u.socketId, null, u.name, u.level, false); this.createPeer(u.socketId, true); } });
+                    users.forEach(u => { if (u.socketId !== this.mySocketId) { this.userInfo.set(u.socketId, u); UI.addVideo(u.socketId, null, u.name, u.level, false); } });
                     UI.updateParticipants(this.userInfo, this.mySocketId);
 
                     if (userStates) userStates.forEach(s => UI.updatePeerState(s.peerId, s.state));
 
                     this.socket.emit('state-change', { roomId: this.currentRoom, peerId: this.mySocketId, state: { cam: this.isCamOn, mic: this.isMicOn, sound: this.isSoundOn } });
+                    const joinedSocketId = this.mySocketId;
+                    this.socket.timeout(9000).emit('request-ice-servers', (error, response) => {
+                        if (joinedSocketId !== this.mySocketId || !this.socket.connected) return;
+                        if (!error && Array.isArray(response?.iceServers)) ICE_CONFIG = { iceServers: response.iceServers };
+                        this.iceReady = true;
+                        if (response?.turnEnabled === false) UI.showToast('TURN non configuré : certains réseaux peuvent bloquer la vidéo');
+                        users.forEach(u => {
+                            if (u.socketId !== this.mySocketId && this.userInfo.has(u.socketId) && !this.peers.has(u.socketId)) this.createPeer(u.socketId, true);
+                        });
+                        for (const item of this.pendingSignals.splice(0)) this.receiveSignal(item);
+                    });
                 });
                 this.socket.on('user-joined', (u) => {
                     this.userInfo.set(u.socketId, u); UI.addVideo(u.socketId, null, u.name, u.level, false); UI.updateParticipants(this.userInfo, this.mySocketId); UI.showToast(`${u.name} rejoint`);
                     this.socket.emit('state-change', { roomId: this.currentRoom, peerId: this.mySocketId, state: { cam: this.isCamOn, mic: this.isMicOn, sound: this.isSoundOn } });
                 });
-                this.socket.on('signal', ({ from, signal }) => { if (!this.peers.has(from)) this.createPeer(from, false); this.peers.get(from).signal(signal); });
+                this.socket.on('signal', (item) => {
+                    if (!this.iceReady) this.pendingSignals.push(item);
+                    else this.receiveSignal(item);
+                });
                 this.socket.on('user-left', ({ socketId }) => { this.removePeer(socketId); });
+                this.socket.on('disconnect', () => {
+                    this.iceReady = false;
+                    this.pendingSignals = [];
+                    for (const id of [...this.peers.keys()]) this.removePeer(id);
+                    if (this.mySocketId) { this.userInfo.delete(this.mySocketId); UI.removeVideo(this.mySocketId); }
+                    this.currentRoom = null;
+                    sessionStorage.removeItem('currentRoom');
+                });
                 this.socket.on('chat-message', ({ from, message }) => UI.addChatMessage(from, message, from === this.userName));
 
                 this.socket.on('state-change', ({ peerId, state }) => {
@@ -2208,16 +2229,41 @@
                 });
             }
 
+            receiveSignal({ from, signal }) {
+                if (!this.userInfo.has(from)) return;
+                if (!this.peers.has(from)) this.createPeer(from, false);
+                try { this.peers.get(from)?.signal(signal); } catch (error) { this.restartTransport(); }
+            }
+
+            restartTransport() {
+                if (!this.socket || !navigator.onLine) return;
+                const now = Date.now();
+                if (now - this.lastTransportRestart < 5000) return;
+                this.lastTransportRestart = now;
+                UI.showToast('Réseau modifié : reconnexion de la salle…');
+                this.socket.disconnect();
+                setTimeout(() => this.socket.connect(), 300);
+            }
+
             createPeer(peerId, initiator) {
+                if (this.peers.has(peerId) || !this.userInfo.has(peerId)) return;
                 const peer = new SimplePeer({ initiator, stream: this.localStream, config: ICE_CONFIG });
                 peer.on('signal', (sig) => this.socket.emit('signal', { to: peerId, signal: sig }));
                 peer.on('stream', (stream) => UI.attachStream(peerId, stream));
-                peer.on('error', () => { if (initiator) setTimeout(() => { this.removePeer(peerId); this.createPeer(peerId, true); }, 3000); });
+                peer.on('error', () => { if (this.peers.get(peerId) === peer) this.restartTransport(); });
+                peer.on('close', () => { if (this.peers.get(peerId) === peer) this.restartTransport(); });
+                peer._pc?.addEventListener('iceconnectionstatechange', () => {
+                    const state = peer._pc?.iceConnectionState;
+                    if (state === 'failed') this.restartTransport();
+                    if (state === 'disconnected') setTimeout(() => {
+                        if (this.peers.get(peerId) === peer && peer._pc?.iceConnectionState === 'disconnected') this.restartTransport();
+                    }, 6000);
+                });
                 this.peers.set(peerId, peer);
             }
 
             removePeer(peerId) {
-                if (this.peers.has(peerId)) { this.peers.get(peerId).destroy(); this.peers.delete(peerId); }
+                if (this.peers.has(peerId)) { const peer = this.peers.get(peerId); this.peers.delete(peerId); peer.destroy(); }
                 this.userInfo.delete(peerId); UI.removeVideo(peerId); UI.updateParticipants(this.userInfo, this.mySocketId);
             }
 

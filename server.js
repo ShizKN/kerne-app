@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const { Server } = require('socket.io');
 const compression = require('compression');
@@ -14,6 +15,9 @@ app.use(compression());
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
+app.get('/vendor/simplepeer.min.js', (req, res) => {
+    res.sendFile(require.resolve('simple-peer/simplepeer.min.js'));
+});
 
 const rateLimiter = new RateLimiterMemory({
     points: 15,
@@ -51,6 +55,7 @@ const userReports = new Map();
 const MAX_ROOM_SIZE = 4;
 
 function validateName(name) {
+    if (typeof name !== 'string') return { valid: false, reason: 'Nom invalide' };
     name = name.trim();
 
     if (name.length < 2 || name.length > 20) {
@@ -154,7 +159,7 @@ function reportUser(roomId, reportedUserId, reporterUserId) {
 
 function findOrCreateRoom() {
     for (const [roomId, room] of rooms.entries()) {
-        if (room.users.length < MAX_ROOM_SIZE) {
+        if (roomId.startsWith('room-mixed-') && room.users.length < MAX_ROOM_SIZE) {
             return roomId;
         }
     }
@@ -177,10 +182,16 @@ io.on('connection', (socket) => {
 
     let currentRoom = null;
     let userData = null;
+    let cachedIceServers = null;
+    let cachedIceServersUntil = 0;
 
-    socket.on('join-room', ({ name, level, peerId, userId }) => {
-        if (!name || !level || !peerId) {
+    socket.on('join-room', ({ name, level, peerId, userId, privateRoomCode } = {}) => {
+        if (!name || !level || !peerId || peerId !== socket.id || currentRoom) {
             socket.emit('error', { message: 'Données manquantes' });
+            return;
+        }
+        if (privateRoomCode && !/^\d{6}$/.test(privateRoomCode)) {
+            socket.emit('error', { message: 'Code de salle invalide' });
             return;
         }
 
@@ -202,8 +213,17 @@ io.on('connection', (socket) => {
             return;
         }
 
-        const roomId = findOrCreateRoom();
+        const roomId = privateRoomCode ? `private-${privateRoomCode}` : findOrCreateRoom();
+        if (!rooms.has(roomId)) rooms.set(roomId, {
+            users: [], createdAt: new Date(), lastActivity: new Date(),
+            kickedUsers: new Set(), userStates: new Map()
+        });
         const room = rooms.get(roomId);
+
+        if (room.users.length >= MAX_ROOM_SIZE) {
+            socket.emit('error', { message: 'La salle est pleine' });
+            return;
+        }
 
         if (room.kickedUsers.has(idToTest)) {
             socket.emit('error', { message: 'Tu as été expulsé de cette salle' });
@@ -241,12 +261,47 @@ io.on('connection', (socket) => {
     });
 
     // SimplePeer signaling
-    socket.on('signal', ({ to, signal }) => {
+    socket.on('signal', ({ to, signal } = {}) => {
+        const users = rooms.get(currentRoom)?.users;
+        if (!users?.some(u => u.socketId === socket.id) || !users.some(u => u.socketId === to) || !signal) return;
         io.to(to).emit('signal', {
             from: socket.id,
             signal: signal
         });
     });
+
+    socket.on('request-ice-servers', async (reply) => {
+        if (typeof reply !== 'function') return;
+        if (!rooms.get(currentRoom)?.users.some(u => u.socketId === socket.id)) return reply({ error: 'Rejoins une salle avant de demander TURN' });
+        if (cachedIceServers && Date.now() < cachedIceServersUntil) return reply(cachedIceServers);
+        if (!process.env.TURN_KEY_ID || !process.env.TURN_KEY_API_TOKEN) {
+            return reply({ iceServers: [{ urls: 'stun:stun.cloudflare.com:3478' }], turnEnabled: false });
+        }
+        try {
+            const response = await fetch(`https://rtc.live.cloudflare.com/v1/turn/keys/${encodeURIComponent(process.env.TURN_KEY_ID)}/credentials/generate-ice-servers`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${process.env.TURN_KEY_API_TOKEN}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ttl: 7200 }),
+                signal: AbortSignal.timeout(7000)
+            });
+            if (!response.ok) throw new Error(`Cloudflare TURN: HTTP ${response.status}`);
+            const data = await response.json();
+            if (!Array.isArray(data.iceServers)) throw new Error('Réponse TURN invalide');
+            cachedIceServers = { iceServers: data.iceServers, turnEnabled: true };
+            cachedIceServersUntil = Date.now() + 60 * 60 * 1000;
+            reply(cachedIceServers);
+        } catch (error) {
+            console.error(error.message);
+            reply({ iceServers: [{ urls: 'stun:stun.cloudflare.com:3478' }], turnEnabled: false });
+        }
+    });
+
+    for (const event of ['wb-get-state', 'wb-send-state', 'wb-create', 'wb-draw', 'wb-delete', 'wb-undo-redo']) {
+        socket.on(event, (data) => {
+            if (!rooms.get(currentRoom)?.users.some(u => u.socketId === socket.id) || !data || data.roomId !== currentRoom) return;
+            socket.to(currentRoom).emit(event, event === 'wb-delete' ? data.boardId : data);
+        });
+    }
 
     socket.on('report-user', ({ roomId, reportedUserId }) => {
         if (!currentRoom || currentRoom !== roomId || !userData) return;
