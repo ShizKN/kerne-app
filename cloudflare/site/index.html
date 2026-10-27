@@ -1,0 +1,1358 @@
+<!DOCTYPE html>
+<html lang="fr"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="description" content="KERNE - Plateforme d'étude collaborative P2P avec vidéo, chat et partage d'écran">
+    <meta name="theme-color" content="#ffeb3b">
+    <link rel="icon" type="image/png" href="Logo.png">
+    <link rel="apple-touch-icon" href="Logo.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="Logo.png">
+    <link rel="manifest" href="manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="KERNE">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta property="og:title" content="KERNE — Étude collaborative">
+    <meta property="og:description" content="La salle d'étude en ligne pour bosser ensemble.">
+    <meta property="og:image" content="Logo.png">
+    <meta property="og:type" content="website">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:image" content="Logo.png">
+    <title>KERNE - Rejoindre une session</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Oswald:wght@600;700&display=swap');
+
+        :root {
+            --paper: #f4f1e8;
+            --ink: #1a1a1a;
+            --highlight: #ffeb3b;
+            --red-pen: #d32f2f;
+            --green: #4caf50;
+            --tape: rgba(150, 150, 150, 0.3);
+        }
+
+        @keyframes paperDrop {
+            0% {
+                opacity: 0;
+                transform: translateY(-100px) rotate(-15deg);
+            }
+
+            60% {
+                transform: translateY(10px) rotate(2deg);
+            }
+
+            80% {
+                transform: translateY(-5px) rotate(-1deg);
+            }
+
+            100% {
+                opacity: 1;
+                transform: translateY(0) rotate(0deg);
+            }
+        }
+
+        @keyframes scribble {
+            0% {
+                width: 0;
+            }
+
+            100% {
+                width: 100%;
+            }
+        }
+
+        @keyframes fadeInUp {
+            0% {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+
+            100% {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes tapeStick {
+            0% {
+                opacity: 0;
+                transform: translateX(-50%) scale(0) rotate(-5deg);
+            }
+
+            70% {
+                transform: translateX(-50%) scale(1.1) rotate(-5deg);
+            }
+
+            100% {
+                opacity: 1;
+                transform: translateX(-50%) scale(1) rotate(-5deg);
+            }
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        html {
+            height: 100%;
+            height: -webkit-fill-available;
+        }
+
+        body {
+            font-family: 'Courier Prime', monospace;
+            background: linear-gradient(135deg, #e8e3d6 0%, #d4cfc0 100%);
+            color: var(--ink);
+            min-height: 100vh;
+            min-height: -webkit-fill-available;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: clamp(10px, 3vw, 20px);
+            position: relative;
+            overflow-x: hidden;
+            overflow-y: auto;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0, 0, 0, .02) 2px, rgba(0, 0, 0, .02) 4px);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .container {
+            position: relative;
+            z-index: 1;
+            max-width: min(600px, 100%);
+            width: 100%;
+            margin: auto;
+        }
+
+        .donate-btn {
+            position: fixed;
+            bottom: clamp(10px, 2vh, 20px);
+            left: clamp(10px, 2vw, 20px);
+            z-index: 1000;
+            background: var(--highlight);
+            color: var(--ink);
+            padding: clamp(8px, 1.5vw, 12px) clamp(16px, 3vw, 24px);
+            border: 3px solid var(--ink);
+            font-family: 'Oswald', sans-serif;
+            font-size: clamp(12px, 2.5vw, 16px);
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            cursor: pointer;
+            box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.2);
+            transition: all 0.2s;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            animation: fadeInUp 0.6s cubic-bezier(0.25, 0.8, 0.25, 1) 1s backwards;
+        }
+
+        .donate-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 6px 6px 0 rgba(0, 0, 0, 0.25);
+        }
+
+        .about-btn {
+            position: fixed;
+            top: clamp(10px, 2vh, 20px);
+            right: clamp(10px, 2vw, 20px);
+            z-index: 1000;
+            width: clamp(35px, 6vw, 40px);
+            height: clamp(35px, 6vw, 40px);
+            background: var(--highlight);
+            color: var(--ink);
+            border: 3px solid var(--ink);
+            border-radius: 50%;
+            font-family: 'Oswald', sans-serif;
+            font-size: clamp(16px, 3vw, 20px);
+            font-weight: 700;
+            cursor: pointer;
+            box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.2);
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: fadeInUp 0.6s cubic-bezier(0.25, 0.8, 0.25, 1) 1.1s backwards;
+        }
+
+        .about-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 6px 6px 0 rgba(0, 0, 0, 0.25);
+        }
+
+        .about-note {
+            position: fixed;
+            top: clamp(60px, 10vh, 80px);
+            right: clamp(10px, 2vw, 20px);
+            width: min(320px, calc(100vw - 40px));
+            background: #fff9c4;
+            border: 2px solid var(--ink);
+            padding: clamp(15px, 3vw, 20px);
+            box-shadow: 8px 8px 0 rgba(0, 0, 0, 0.15);
+            z-index: 999;
+            transform: rotate(2deg) translateY(-20px);
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        .about-note.show {
+            transform: rotate(2deg) translateY(0);
+            opacity: 1;
+            pointer-events: all;
+        }
+
+        .about-note::before {
+            content: '';
+            position: absolute;
+            top: -12px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: clamp(60px, 15vw, 80px);
+            height: 20px;
+            background: var(--tape);
+            border: 1px solid rgba(0, 0, 0, 0.1);
+        }
+
+        .about-note .close-note {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: var(--red-pen);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            cursor: pointer;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .about-photo {
+            width: clamp(60px, 12vw, 80px);
+            height: clamp(60px, 12vw, 80px);
+            border-radius: 50%;
+            border: 3px solid var(--ink);
+            margin: 0 auto 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: clamp(28px, 6vw, 36px);
+            font-weight: 700;
+            color: white;
+            overflow: hidden;
+        }
+
+        .about-photo img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .about-note h3 {
+            font-family: 'Oswald', sans-serif;
+            text-align: center;
+            margin-bottom: 12px;
+            font-size: clamp(14px, 3vw, 18px);
+        }
+
+        .about-note p {
+            font-size: clamp(11px, 2.2vw, 13px);
+            line-height: 1.6;
+            margin-bottom: 10px;
+        }
+
+        .main-card {
+            background: var(--paper);
+            padding: clamp(20px, 5vw, 40px);
+            border: 3px solid var(--ink);
+            box-shadow: 8px 8px 0 rgba(0, 0, 0, 0.1), -3px -3px 0 rgba(255, 255, 255, 0.8) inset;
+            position: relative;
+            transform: rotate(-0.5deg);
+            animation: float 6s ease-in-out infinite, fadeInUp 0.6s cubic-bezier(0.25, 0.8, 0.25, 1) 0.2s backwards;
+        }
+
+        @keyframes float {
+
+            0%,
+            100% {
+                transform: rotate(-0.5deg) translateY(0);
+            }
+
+            50% {
+                transform: rotate(-0.5deg) translateY(-8px);
+            }
+        }
+
+        .main-card::before {
+            content: '';
+            position: absolute;
+            top: -12px;
+            right: clamp(20px, 5vw, 40px);
+            width: clamp(60px, 15vw, 100px);
+            height: 20px;
+            background: var(--tape);
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            transform: rotate(-3deg);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            animation: tapeStick 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 0.4s backwards;
+        }
+
+        .logo {
+            font-family: 'Oswald', sans-serif;
+            font-size: clamp(28px, 8vw, 52px);
+            font-weight: 700;
+            text-align: center;
+            margin-bottom: 10px;
+            letter-spacing: -2px;
+            text-transform: uppercase;
+            background: var(--highlight);
+            padding: clamp(8px, 2vw, 10px) clamp(15px, 3vw, 20px);
+            border: 3px solid var(--ink);
+            box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.15);
+            width: 100%;
+            animation: paperDrop 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        .tagline {
+            text-align: center;
+            font-size: clamp(10px, 2.2vw, 14px);
+            margin-bottom: clamp(20px, 4vw, 30px);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            opacity: 0.8;
+            font-weight: 600;
+            color: var(--red-pen);
+            position: relative;
+            animation: fadeInUp 0.8s cubic-bezier(0.25, 0.8, 0.25, 1) 0.3s backwards;
+        }
+
+        .tagline::after {
+            content: '';
+            position: absolute;
+            bottom: -3px;
+            left: 0;
+            height: 2px;
+            background: var(--red-pen);
+            width: 0;
+            animation: scribble 0.6s cubic-bezier(0.25, 0.8, 0.25, 1) 0.8s forwards;
+        }
+
+        .info-section {
+            background: #fff9c4;
+            border: 2px solid var(--ink);
+            padding: clamp(12px, 3vw, 20px);
+            margin-bottom: clamp(15px, 3vw, 25px);
+            box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.1);
+            animation: fadeInUp 0.6s cubic-bezier(0.25, 0.8, 0.25, 1) 0.5s backwards;
+        }
+
+        .info-section h3 {
+            font-family: 'Oswald', sans-serif;
+            font-size: clamp(13px, 2.8vw, 16px);
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .info-section ul {
+            margin-left: clamp(15px, 3vw, 20px);
+            line-height: 1.8;
+        }
+
+        .info-section li {
+            font-size: clamp(11px, 2.2vw, 13px);
+            margin-bottom: 5px;
+        }
+
+        .form-section {
+            margin-bottom: clamp(15px, 3vw, 25px);
+            animation: fadeInUp 0.5s cubic-bezier(0.25, 0.8, 0.25, 1) backwards;
+        }
+
+        .form-section:nth-child(2) {
+            animation-delay: 0.6s;
+        }
+
+        .form-section:nth-child(3) {
+            animation-delay: 0.7s;
+        }
+
+        .form-section:nth-child(4) {
+            animation-delay: 0.8s;
+        }
+
+        .label-title {
+            font-family: 'Oswald', sans-serif;
+            font-size: clamp(13px, 2.8vw, 16px);
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 10px;
+            display: block;
+        }
+
+        .input-container {
+            position: relative;
+        }
+
+        input[type="text"],
+        select {
+            width: 100%;
+            padding: clamp(12px, 2.5vw, 15px) clamp(35px, 7vw, 45px) clamp(12px, 2.5vw, 15px) clamp(12px, 2.5vw, 15px);
+            border: 3px solid var(--ink);
+            background: white;
+            font-family: 'Courier Prime', monospace;
+            font-size: clamp(14px, 2.8vw, 16px);
+            color: var(--ink);
+            box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.1);
+            transition: all 0.2s;
+        }
+
+        input[type="text"]:focus,
+        select:focus {
+            outline: none;
+            box-shadow: 5px 5px 0 var(--highlight);
+            transform: translate(-2px, -2px);
+        }
+
+        .validation-icon {
+            position: absolute;
+            right: clamp(10px, 2vw, 15px);
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: clamp(20px, 4vw, 24px);
+            font-weight: 700;
+        }
+
+        .validation-message {
+            background: var(--red-pen);
+            color: white;
+            padding: 8px 12px;
+            margin-top: 8px;
+            border-radius: 4px;
+            font-size: clamp(11px, 2.2vw, 12px);
+            font-weight: 700;
+            display: none;
+            animation: shake 0.3s;
+        }
+
+        .validation-message.show {
+            display: block;
+        }
+
+        @keyframes shake {
+
+            0%,
+            100% {
+                transform: translateX(0);
+            }
+
+            25% {
+                transform: translateX(-5px);
+            }
+
+            75% {
+                transform: translateX(5px);
+            }
+        }
+
+        .camera-preview {
+            margin: clamp(15px, 3vw, 25px) 0;
+            position: relative;
+            border: 3px solid var(--ink);
+            background: #000;
+            aspect-ratio: 16/9;
+            overflow: hidden;
+            box-shadow: 5px 5px 0 rgba(0, 0, 0, 0.1);
+        }
+
+        #localVideo {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+        }
+
+        .camera-status {
+            position: absolute;
+            top: clamp(10px, 2vw, 15px);
+            left: clamp(10px, 2vw, 15px);
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: clamp(6px, 1.5vw, 8px) clamp(10px, 2vw, 15px);
+            border-radius: 20px;
+            font-size: clamp(10px, 2vw, 12px);
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .user-info-overlay {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(to top, rgba(0, 0, 0, 0.85), transparent);
+            padding: clamp(10px, 2vw, 15px);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .user-name-display {
+            color: white;
+            font-size: clamp(14px, 3vw, 18px);
+            font-weight: 700;
+            text-shadow: 2px 2px 4px black;
+            font-family: 'Oswald', sans-serif;
+        }
+
+        .user-level-display {
+            color: var(--highlight);
+            font-size: clamp(11px, 2.2vw, 13px);
+            font-weight: 700;
+            text-shadow: 1px 1px 2px black;
+        }
+
+        .join-btn {
+            width: 100%;
+            padding: clamp(14px, 3vw, 18px);
+            background: var(--highlight);
+            border: 3px solid var(--ink);
+            font-family: 'Oswald', sans-serif;
+            font-size: clamp(16px, 3.5vw, 20px);
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            cursor: pointer;
+            box-shadow: 5px 5px 0 rgba(0, 0, 0, 0.15);
+            transition: all 0.2s;
+            color: var(--ink);
+            animation: fadeInUp 0.5s cubic-bezier(0.25, 0.8, 0.25, 1) 0.9s backwards;
+        }
+
+        .join-btn:hover:not(:disabled) {
+            transform: translate(-2px, -2px);
+            box-shadow: 7px 7px 0 rgba(0, 0, 0, 0.2);
+        }
+
+        .join-btn:active:not(:disabled) {
+            transform: translate(0, 0);
+            box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.15);
+        }
+
+        .join-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .private-btn {
+            background: var(--paper);
+            border: 2px solid var(--ink);
+            font-family: 'Oswald', sans-serif;
+            font-size: 13px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            cursor: pointer;
+            padding: 9px 14px;
+            transition: all 0.15s;
+            white-space: nowrap;
+            color: var(--ink);
+        }
+
+        .private-btn:hover:not(:disabled) {
+            background: var(--highlight);
+            transform: translate(-1px, -1px);
+            box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.15);
+        }
+
+        .private-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .loading {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            color: var(--highlight);
+            font-size: clamp(18px, 4vw, 24px);
+            font-weight: 700;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .loading.active {
+            display: flex;
+        }
+
+        .toast {
+            position: fixed;
+            bottom: -100px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--green);
+            color: white;
+            padding: clamp(12px, 2.5vw, 15px) clamp(20px, 4vw, 30px);
+            border: 3px solid var(--ink);
+            box-shadow: 5px 5px 0 rgba(0, 0, 0, 0.2);
+            font-weight: 700;
+            z-index: 10000;
+            transition: bottom 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+            max-width: calc(100vw - 40px);
+            text-align: center;
+            font-size: clamp(12px, 2.5vw, 14px);
+        }
+
+        .toast.show {
+            bottom: clamp(20px, 4vh, 30px);
+        }
+
+        .toast.error {
+            background: var(--red-pen);
+        }
+
+        @media (max-width: 768px) {
+            .main-card {
+                transform: rotate(0);
+                animation: none;
+            }
+
+            /* Espace en haut pour les boutons fixes (? et install) */
+            .container {
+                padding-top: 60px;
+            }
+
+            .donate-btn {
+                left: 50%;
+                transform: translateX(-50%);
+                bottom: 15px;
+            }
+
+            .donate-btn:hover {
+                transform: translateX(-50%) translateY(-2px);
+            }
+        }
+
+        @media (max-width: 480px) {
+            .about-note {
+                right: 10px;
+                top: 60px;
+                transform: rotate(0) translateY(-20px);
+            }
+
+            .about-note.show {
+                transform: rotate(0) translateY(0);
+            }
+
+            .donate-btn {
+                font-size: 11px;
+                padding: 8px 16px;
+                bottom: 12px;
+            }
+
+            /* Espace sous la card pour le bouton SOUTENIR */
+            .container {
+                padding-top: 55px;
+                padding-bottom: 60px;
+            }
+        }
+
+        @media (orientation: landscape) and (max-height: 600px) {
+            .donate-btn {
+                padding: 6px 12px;
+                font-size: 10px;
+                bottom: 8px;
+            }
+
+            /* En landscape mobile : boutons compacts */
+            .install-btn {
+                width: 30px !important;
+                height: 30px !important;
+            }
+
+            .install-btn svg {
+                width: 13px !important;
+                height: 13px !important;
+            }
+        }
+
+        i {
+            font-size: 14px;
+        }
+
+        /* ===== BOUTON INSTALL (MOBILE UNIQUEMENT — icône rond, haut gauche) ===== */
+        .install-btn {
+            display: none;
+        }
+
+        @media (max-width: 1024px) {
+            .install-btn {
+                display: flex;
+                position: fixed;
+                top: clamp(10px, 2vh, 20px);
+                left: clamp(10px, 2vw, 20px);
+                z-index: 1000;
+                width: clamp(35px, 6vw, 40px);
+                height: clamp(35px, 6vw, 40px);
+                background: var(--ink);
+                border: 3px solid var(--ink);
+                border-radius: 50%;
+                cursor: pointer;
+                box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.2);
+                transition: all 0.2s;
+                align-items: center;
+                justify-content: center;
+                animation: fadeInUp 0.6s cubic-bezier(0.25, 0.8, 0.25, 1) 1.1s backwards;
+            }
+
+            .install-btn:hover {
+                transform: translateY(-2px);
+                box-shadow: 6px 6px 0 rgba(0, 0, 0, 0.25);
+            }
+
+            .install-btn svg {
+                width: 16px;
+                height: 16px;
+                stroke: var(--highlight);
+                fill: none;
+                stroke-width: 2.5;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+            }
+        }
+
+        /* ===== MODAL INSTALL ===== */
+        .install-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 9998;
+            align-items: flex-end;
+            justify-content: center;
+        }
+
+        .install-overlay.show {
+            display: flex;
+        }
+
+        .install-modal {
+            background: var(--paper);
+            border: 3px solid var(--ink);
+            border-bottom: none;
+            width: 100%;
+            max-width: 480px;
+            padding: clamp(20px, 5vw, 30px);
+            box-shadow: 0 -8px 0 rgba(0, 0, 0, 0.15);
+            position: relative;
+            animation: slideUp 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        @keyframes slideUp {
+            from {
+                transform: translateY(100%);
+            }
+
+            to {
+                transform: translateY(0);
+            }
+        }
+
+        .install-modal::before {
+            content: '';
+            position: absolute;
+            top: -12px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 80px;
+            height: 20px;
+            background: var(--tape);
+            border: 1px solid rgba(0, 0, 0, 0.1);
+        }
+
+        .install-modal-title {
+            font-family: 'Oswald', sans-serif;
+            font-size: clamp(16px, 4vw, 20px);
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 20px;
+            background: var(--highlight);
+            padding: 6px 12px;
+            border: 2px solid var(--ink);
+            display: inline-block;
+        }
+
+        .install-close {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            background: var(--red-pen);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 26px;
+            height: 26px;
+            cursor: pointer;
+            font-weight: 700;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .install-tabs {
+            display: flex;
+            gap: 0;
+            margin-bottom: 20px;
+            border: 2px solid var(--ink);
+        }
+
+        .install-tab {
+            flex: 1;
+            padding: clamp(8px, 2vw, 12px);
+            font-family: 'Oswald', sans-serif;
+            font-size: clamp(12px, 2.5vw, 14px);
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            cursor: pointer;
+            background: white;
+            border: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            transition: all 0.2s;
+        }
+
+        .install-tab:first-child {
+            border-right: 2px solid var(--ink);
+        }
+
+        .install-tab.active {
+            background: var(--highlight);
+        }
+
+        .install-tab svg {
+            width: 18px;
+            height: 18px;
+            fill: currentColor;
+            flex-shrink: 0;
+        }
+
+        .install-panel {
+            display: none;
+        }
+
+        .install-panel.active {
+            display: block;
+        }
+
+        .install-step {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            margin-bottom: 14px;
+        }
+
+        .install-step-num {
+            font-family: 'Oswald', sans-serif;
+            font-size: 13px;
+            font-weight: 700;
+            background: var(--ink);
+            color: var(--highlight);
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .install-step-text {
+            font-size: clamp(11px, 2.2vw, 13px);
+            line-height: 1.6;
+        }
+
+        .install-step-text strong {
+            font-family: 'Oswald', sans-serif;
+            font-size: clamp(12px, 2.5vw, 14px);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .install-step svg {
+            display: inline-block;
+            vertical-align: middle;
+            width: 16px;
+            height: 16px;
+            fill: var(--ink);
+            margin: 0 2px;
+        }
+
+        .install-note {
+            background: #fff9c4;
+            border: 2px solid var(--ink);
+            padding: 10px 14px;
+            font-size: clamp(10px, 2vw, 12px);
+            margin-top: 16px;
+            font-weight: 700;
+        }
+
+        .copyright {
+            margin-top: 20px;
+            text-align: center;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            opacity: 0.6;
+            font-family: 'Courier Prime', monospace;
+            border-top: 1px dashed var(--ink);
+            padding-top: 10px;
+        }
+    </style>
+</head>
+
+<body>
+    <button class="about-btn" id="aboutBtn">?</button>
+
+    <div class="about-note" id="aboutNote">
+        <button class="close-note" id="closeNote">×</button>
+        <div class="about-photo"><img src="Photo.png" alt="Kerne"></div>
+        <h3>À PROPOS DE KERNE</h3>
+        <p>J’ai fait ça à l’arrache en un weekend parce que j'étais trop démotivé et que j'en pouvais plus de bosser
+            seul.
+            Profitez d’une appli faite par un étudiant, pour vous, étudiants.
+            <br>
+            </p><center>Force à Nous !</center>
+            <br><i>Yassine El Faidi</i>
+        <p></p>
+    </div>
+
+    <a href="https://ko-fi.com/kerne" target="_blank" class="donate-btn">💌 SOUTENIR</a>
+
+    <!-- Bouton install : icône rond, mobile uniquement, haut gauche -->
+    <button class="install-btn" id="installBtn" title="Installer l'app">
+        <svg viewBox="0 0 24 24">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+        </svg>
+    </button>
+
+    <!-- Modal install -->
+    <div class="install-overlay" id="installOverlay">
+        <div class="install-modal">
+            <button class="install-close" id="installClose">×</button>
+            <div class="install-modal-title">📲 Installer KERNE</div>
+            <div class="install-tabs">
+                <button class="install-tab active" id="tabIos" onclick="switchInstallTab('ios')">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"></path>
+                    </svg>
+                    iPhone
+                </button>
+                <button class="install-tab" id="tabAndroid" onclick="switchInstallTab('android')">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M17.523 15.341c-.21 0-.386-.175-.386-.386V9.045c0-.21.175-.386.386-.386.21 0 .386.175.386.386v5.91c0 .21-.175.386-.386.386zM6.477 15.341c-.21 0-.386-.175-.386-.386V9.045c0-.21.175-.386.386-.386.21 0 .386.175.386.386v5.91c0 .21-.175.386-.386.386zM8.636 18.818c0 .314-.255.568-.568.568-.314 0-.568-.254-.568-.568v-2.273c0-.313.254-.568.568-.568.313 0 .568.255.568.568v2.273zM16.5 18.818c0 .314-.254.568-.568.568-.313 0-.568-.254-.568-.568v-2.273c0-.313.255-.568.568-.568.314 0 .568.255.568.568v2.273zM9.205 6.136l-.705-1.273a.19.19 0 0 0-.26-.068.19.19 0 0 0-.068.261l.716 1.296A5.985 5.985 0 0 0 6 11.045h12a5.985 5.985 0 0 0-2.888-4.693l.716-1.296a.19.19 0 0 0-.068-.261.19.19 0 0 0-.26.068l-.705 1.273A5.955 5.955 0 0 0 12 5.523a5.955 5.955 0 0 0-2.795.613zM10.364 9.25c-.314 0-.568-.255-.568-.568 0-.314.254-.568.568-.568.313 0 .568.254.568.568 0 .313-.255.568-.568.568zm3.272 0c-.313 0-.568-.255-.568-.568 0-.314.255-.568.568-.568.314 0 .568.254.568.568 0 .313-.254.568-.568.568zM6 12.182h12v3.409a1.14 1.14 0 0 1-1.136 1.136H7.136A1.14 1.14 0 0 1 6 15.591v-3.41z"></path>
+                    </svg>
+                    Android
+                </button>
+            </div>
+            <div class="install-panel active" id="panelIos">
+                <div class="install-step">
+                    <div class="install-step-num">1</div>
+                    <div class="install-step-text">Ouvre ce site dans <strong>Safari</strong> (pas Chrome ni Firefox)
+                    </div>
+                </div>
+                <div class="install-step">
+                    <div class="install-step-num">2</div>
+                    <div class="install-step-text">Appuie sur le bouton <strong>Partager</strong> <svg viewBox="0 0 24 24" style="width:15px;height:15px;display:inline;vertical-align:middle;stroke:var(--ink);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;">
+                            <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path>
+                            <polyline points="16 6 12 2 8 6"></polyline>
+                            <line x1="12" y1="2" x2="12" y2="15"></line>
+                        </svg> en bas de l'écran</div>
+                </div>
+                <div class="install-step">
+                    <div class="install-step-num">3</div>
+                    <div class="install-step-text">Fais défiler et tape sur <strong>« Sur l'écran d'accueil »</strong>
+                    </div>
+                </div>
+                <div class="install-step">
+                    <div class="install-step-num">4</div>
+                    <div class="install-step-text">Appuie sur <strong>Ajouter</strong> — c'est tout !</div>
+                </div>
+                <div class="install-note">⚠️ Fonctionne uniquement via Safari sur iPhone/iPad. L'app s'ouvre ensuite en
+                    plein écran !</div>
+            </div>
+            <div class="install-panel" id="panelAndroid">
+                <div class="install-step">
+                    <div class="install-step-num">1</div>
+                    <div class="install-step-text">Ouvre ce site dans <strong>Chrome</strong></div>
+                </div>
+                <div class="install-step">
+                    <div class="install-step-num">2</div>
+                    <div class="install-step-text">Appuie sur le menu <strong>⋮</strong> en haut à droite de Chrome
+                    </div>
+                </div>
+                <div class="install-step">
+                    <div class="install-step-num">3</div>
+                    <div class="install-step-text">Tape sur <strong>« Ajouter à l'écran d'accueil »</strong> ou
+                        <strong>« Installer »</strong>
+                    </div>
+                </div>
+                <div class="install-step">
+                    <div class="install-step-num">4</div>
+                    <div class="install-step-text">Confirme en appuyant sur <strong>Installer</strong></div>
+                </div>
+                <div class="install-note">✓ Chrome peut aussi proposer automatiquement une bannière d'installation !
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="main-card">
+            <div class="logo">KERNE</div>
+            <div class="tagline">Étudions Ensemble, Restons Motivés</div>
+            <form id="joinForm">
+                <div class="form-section">
+                    <label class="label-title">👤 TON NOM</label>
+                    <div class="input-container">
+                        <input type="text" id="nameInput" placeholder="Ex: Alex, Marie, Sam..." maxlength="20" autocomplete="off" required="">
+                        <span class="validation-icon" id="nameValidation"></span>
+                    </div>
+                    <div class="validation-message" id="nameMessage"></div>
+                </div>
+
+                <div class="form-section">
+                    <label class="label-title">📚 TON NIVEAU D'ÉTUDES</label>
+                    <select id="levelSelect" required="">
+                        <option value="">-- Sélectionne ton niveau --</option>
+                        <option value="Collège">Collège</option>
+                        <option value="Lycée">Lycée</option>
+                        <option value="Prépa">Prépa (CPGE)</option>
+                        <option value="Licence">Licence (L1, L2, L3)</option>
+                        <option value="Master">Master (M1, M2)</option>
+                        <option value="Doctorat">Doctorat</option>
+                    </select>
+                </div>
+
+                <div class="form-section">
+                    <label class="label-title">APERÇU CAMÉRA</label>
+                    <div class="camera-preview">
+                        <video id="localVideo" autoplay="" muted="" playsinline=""></video>
+                        <div class="camera-status" id="cameraStatus">Attente autorisation...</div>
+                        <div class="user-info-overlay">
+                            <div class="user-name-display" id="userNameDisplay">-</div>
+                            <div class="user-level-display" id="userLevelDisplay">-</div>
+                        </div>
+                    </div>
+                    <div id="cameraPermissionHelp" role="status" style="display:none; margin-top:10px; padding:12px; background:#fff8d6; border:2px solid var(--ink); font-size:13px; line-height:1.45;">
+                        <strong>Caméra désactivée.</strong> Tu peux rejoindre la salle quand même.
+                        Pour l'activer après un refus, autorise la caméra dans les réglages du site (icône à côté de l'adresse), puis appuie sur Réessayer. Sur téléphone, vérifie aussi les réglages du navigateur.
+                        <button type="button" id="retryCameraBtn" style="display:block; margin-top:8px; padding:8px 12px; background:var(--highlight); border:2px solid var(--ink); font-weight:700; cursor:pointer;">Réessayer la caméra</button>
+                    </div>
+                </div>
+
+                <button type="submit" class="join-btn" id="joinBtn" disabled="">REJOINDRE UNE SALLE PUBLIQUE</button>
+
+                <div style="margin-top: 18px; border-top: 2px dashed rgba(26,26,26,0.15); padding-top: 18px;">
+                    <!-- 1. Entrer un code -->
+                    <div style="display:flex; gap:8px; align-items:stretch; margin-bottom:12px;">
+                        <input type="text" id="roomCodeInput" placeholder="Code de salle" maxlength="6" pattern="[0-9]{6}" autocomplete="off" inputmode="numeric" style="text-transform:uppercase; letter-spacing:4px; font-size:18px; font-weight:700; flex:1; padding:12px 14px; border:2px solid var(--ink); background:white; font-family:'Courier Prime',monospace; text-align:center; min-width:0;">
+                        <button type="button" id="joinPrivateBtn" class="private-btn" disabled="" style="padding:12px 16px;">Rejoindre</button>
+                    </div>
+
+                    <!-- 2. Code généré (affiché après création) -->
+                    <div id="generatedCodeBox" style="display:none; margin-bottom:12px;">
+                        <div style="font-family:'Oswald',sans-serif; font-size:11px; text-transform:uppercase; letter-spacing:1px; opacity:0.6; margin-bottom:5px; text-align:center;">
+                            Code créé — partage-le à tes amis</div>
+                        <div style="display:flex; gap:8px; align-items:center;">
+                            <div id="generatedCodeDisplay" style="font-family:'Courier Prime',monospace; font-size:22px; font-weight:700; letter-spacing:6px; background:var(--highlight); border:2px solid var(--ink); padding:10px 14px; flex:1; text-align:center;">
+                            </div>
+                            <button type="button" id="copyGeneratedCode" style="background:var(--ink); color:var(--highlight); border:none; padding:10px 14px; font-family:'Oswald',sans-serif; font-weight:700; font-size:12px; cursor:pointer; white-space:nowrap;">COPIER</button>
+                        </div>
+                    </div>
+
+                    <!-- 3. Créer une salle (centré, en bas) -->
+                    <div style="text-align:center;">
+                        <button type="button" id="createPrivateBtn" class="private-btn" disabled="" style="padding:10px 24px;">🔒 Créer une salle privée</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+        <div class="copyright">
+            © 2026 KERNE — Fait avec ❤️ à Casa
+        </div>
+    </div>
+
+    <div class="loading" id="loading">Connexion en cours...</div>
+    <div class="toast" id="toast"></div>
+
+    <script>
+        const joinForm = document.getElementById('joinForm');
+        const nameInput = document.getElementById('nameInput');
+        const nameValidation = document.getElementById('nameValidation');
+        const nameMessage = document.getElementById('nameMessage');
+        const levelSelect = document.getElementById('levelSelect');
+        const localVideo = document.getElementById('localVideo');
+        const cameraStatus = document.getElementById('cameraStatus');
+        const cameraPermissionHelp = document.getElementById('cameraPermissionHelp');
+        const retryCameraBtn = document.getElementById('retryCameraBtn');
+        const joinBtn = document.getElementById('joinBtn');
+        const loading = document.getElementById('loading');
+        const toast = document.getElementById('toast');
+        const aboutBtn = document.getElementById('aboutBtn');
+        const aboutNote = document.getElementById('aboutNote');
+        const closeNote = document.getElementById('closeNote');
+        const userNameDisplay = document.getElementById('userNameDisplay');
+        const userLevelDisplay = document.getElementById('userLevelDisplay');
+
+        let localStream = null;
+        let cameraAuthorized = false;
+        let cameraRequesting = false;
+
+        // About panel
+        aboutBtn.onclick = () => aboutNote.classList.toggle('show');
+        closeNote.onclick = () => aboutNote.classList.remove('show');
+        document.addEventListener('click', (e) => {
+            if (!aboutNote.contains(e.target) && !aboutBtn.contains(e.target))
+                aboutNote.classList.remove('show');
+        });
+
+        // Restaurer les valeurs sauvegardées
+        window.addEventListener('load', () => {
+            const savedName = localStorage.getItem('userName');
+            const savedLevel = localStorage.getItem('userLevel');
+            if (savedName) { nameInput.value = savedName; nameInput.dispatchEvent(new Event('input')); }
+            if (savedLevel) { levelSelect.value = savedLevel; levelSelect.dispatchEvent(new Event('change')); }
+            initCamera();
+        });
+
+        // Validation nom (identique au serveur pour cohérence)
+        const BAD_WORDS = ['fuck', 'shit', 'pute', 'merde', 'con', 'salope', 'connard', 'fdp'];
+        function validateName(name) {
+            name = name.trim();
+            if (name.length < 2) return { valid: false, message: 'Au moins 2 caractères requis' };
+            if (name.length > 20) return { valid: false, message: 'Maximum 20 caractères' };
+            if (!/^[a-zA-ZÀ-ÿ0-9\s\-_]+$/.test(name)) return { valid: false, message: 'Caractères non autorisés' };
+            if (/(.)\1{4,}/.test(name)) return { valid: false, message: 'Trop de répétitions' };
+            if (/^(test|admin|mod|bot|fake|user|guest)\d*$/i.test(name)) return { valid: false, message: 'Utilise un vrai prénom ou pseudo' };
+            if (/^[0-9]+$/.test(name)) return { valid: false, message: 'Les chiffres seuls ne sont pas acceptés' };
+            if (!/[a-zA-ZÀ-ÿ]/.test(name)) return { valid: false, message: 'Le nom doit contenir au moins une lettre' };
+            if (BAD_WORDS.some(w => new RegExp(`(^|\\s)${w}($|\\s)`, 'i').test(name))) return { valid: false, message: 'Langage inapproprié détecté' };
+            return { valid: true };
+        }
+
+        nameInput.addEventListener('input', () => {
+            const value = nameInput.value;
+            if (!value.length) {
+                nameValidation.textContent = '';
+                nameMessage.classList.remove('show');
+                userNameDisplay.textContent = '-';
+                checkFormValidity();
+                return;
+            }
+            const result = validateName(value);
+            if (result.valid) {
+                nameValidation.textContent = '✓';
+                nameValidation.style.color = 'var(--green)';
+                nameMessage.classList.remove('show');
+                userNameDisplay.textContent = value;
+            } else {
+                nameValidation.textContent = '✗';
+                nameValidation.style.color = 'var(--red-pen)';
+                nameMessage.textContent = result.message;
+                nameMessage.classList.add('show');
+                userNameDisplay.textContent = '-';
+            }
+            checkFormValidity();
+        });
+
+        levelSelect.addEventListener('change', () => {
+            userLevelDisplay.textContent = levelSelect.value || '-';
+            checkFormValidity();
+        });
+
+        function showToast(message, isError = false) {
+            toast.textContent = message;
+            toast.className = `toast show${isError ? ' error' : ''}`;
+            setTimeout(() => toast.classList.remove('show'), 3000);
+        }
+
+        async function initCamera() {
+            if (cameraRequesting || cameraAuthorized) return;
+            cameraRequesting = true;
+            retryCameraBtn.disabled = true;
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
+                    audio: false // Pas besoin de l'audio ici, juste prévisualisation
+                });
+                localVideo.srcObject = localStream;
+                cameraAuthorized = true;
+                cameraStatus.textContent = '✓ CAMÉRA ACTIVE';
+                cameraStatus.style.background = '#4caf50';
+                cameraPermissionHelp.style.display = 'none';
+                checkFormValidity();
+            } catch (err) {
+                console.error('Erreur caméra:', err);
+                cameraStatus.textContent = 'CAMÉRA DÉSACTIVÉE';
+                cameraStatus.style.background = '#f44336';
+                cameraPermissionHelp.style.display = 'block';
+            } finally {
+                cameraRequesting = false;
+                retryCameraBtn.disabled = false;
+            }
+        }
+        retryCameraBtn.addEventListener('click', initCamera);
+        window.addEventListener('focus', async () => {
+            if (cameraAuthorized || cameraRequesting) return;
+            try {
+                if ((await navigator.permissions.query({ name: 'camera' })).state === 'granted') initCamera();
+            } catch (_) {}
+        });
+
+        function checkFormValidity() {
+            const nameResult = validateName(nameInput.value);
+            const formOk = nameResult.valid && levelSelect.value;
+            joinBtn.disabled = !formOk;
+            document.getElementById('createPrivateBtn').disabled = !formOk;
+            document.getElementById('joinPrivateBtn').disabled = !formOk || !/^\d{6}$/.test(document.getElementById('roomCodeInput').value.trim());
+        }
+
+        // Générer un code à six chiffres
+        function generateCode() {
+            return String(Math.floor(100000 + Math.random() * 900000));
+        }
+
+        // Créer une salle privée
+        document.getElementById('createPrivateBtn').addEventListener('click', () => {
+            const code = generateCode();
+            document.getElementById('generatedCodeDisplay').textContent = code;
+            document.getElementById('generatedCodeBox').style.display = 'block';
+            document.getElementById('roomCodeInput').value = code;
+            checkFormValidity();
+        });
+
+        // Copier le code généré
+        document.getElementById('copyGeneratedCode').addEventListener('click', () => {
+            const code = document.getElementById('generatedCodeDisplay').textContent;
+            navigator.clipboard.writeText(code).then(() => {
+                const btn = document.getElementById('copyGeneratedCode');
+                btn.textContent = '✓ COPIÉ';
+                setTimeout(() => btn.textContent = 'COPIER', 2000);
+            });
+        });
+
+        // Rejoindre via code saisi
+        document.getElementById('joinPrivateBtn').addEventListener('click', () => {
+            document.getElementById('joinForm').requestSubmit();
+        });
+
+        // Activer joinPrivateBtn quand on tape un code
+        document.getElementById('roomCodeInput').addEventListener('input', checkFormValidity);
+
+        joinForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const name = nameInput.value.trim();
+            const result = validateName(name);
+            if (!result.valid) { showToast('⚠️ ' + result.message, true); return; }
+
+            const level = levelSelect.value;
+
+            // Sauvegarder pour pré-remplir au prochain passage
+            localStorage.setItem('userName', name);
+            localStorage.setItem('userLevel', level);
+
+            // Passer les données à room.html via sessionStorage
+            sessionStorage.setItem('userName', name);
+            sessionStorage.setItem('userLevel', level);
+            // Le bouton public rejoint toujours une salle publique, même si un code est affiché.
+            const roomCode = e.submitter === joinBtn ? '' : document.getElementById('roomCodeInput').value.trim();
+            if (roomCode && !/^\d{6}$/.test(roomCode)) { showToast('Code de salle invalide', true); return; }
+            if (roomCode) sessionStorage.setItem('privateRoomCode', roomCode);
+            else sessionStorage.removeItem('privateRoomCode');
+            const userId = localStorage.getItem('userId') || `user-${crypto.randomUUID()}`;
+            localStorage.setItem('userId', userId);
+            sessionStorage.setItem('userId', userId);
+
+            loading.classList.add('active');
+            joinBtn.disabled = true;
+            joinBtn.textContent = '⚡ Connexion...';
+
+            // Libérer la caméra proprement (évite le bug "Device in Use" sur Windows/Chrome)
+            if (localStream) {
+                localStream.getTracks().forEach(t => t.stop());
+                localStream = null;
+            }
+
+            // Petit délai pour que le driver relâche la caméra avant la navigation (Safari)
+            setTimeout(() => { window.location.href = 'room.html'; }, 80);
+        });
+
+        window.addEventListener('beforeunload', () => {
+            if (localStream) localStream.getTracks().forEach(t => t.stop());
+        });
+
+        // ===== INSTALL MODAL =====
+        const installBtn = document.getElementById('installBtn');
+        const installOverlay = document.getElementById('installOverlay');
+        const installClose = document.getElementById('installClose');
+
+        installBtn.addEventListener('click', () => installOverlay.classList.add('show'));
+        installClose.addEventListener('click', () => installOverlay.classList.remove('show'));
+        installOverlay.addEventListener('click', (e) => {
+            if (e.target === installOverlay) installOverlay.classList.remove('show');
+        });
+
+        function switchInstallTab(tab) {
+            document.querySelectorAll('.install-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.install-panel').forEach(p => p.classList.remove('active'));
+            document.getElementById('tab' + tab.charAt(0).toUpperCase() + tab.slice(1)).classList.add('active');
+            document.getElementById('panel' + tab.charAt(0).toUpperCase() + tab.slice(1)).classList.add('active');
+        }
+
+        // Auto-détecter iOS vs Android pour afficher le bon onglet par défaut
+        window.addEventListener('load', () => {
+            const ua = navigator.userAgent;
+            if (/android/i.test(ua)) switchInstallTab('android');
+        });
+    </script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => { });
+        }
+    </script>
+</body>
+</html>
